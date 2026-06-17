@@ -4,7 +4,7 @@
   "description": "Backend API for VeriNode — decentralized savings circles (ROSCA) protocol on Stellar Soroban",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"ok\""
+    "test": "node --test tests/crypto/aggregate_tests.js"
   },
   "repository": {
     "type": "git",
@@ -19,8 +19,11 @@
   },
   "homepage": "https://github.com/VeriNode-Labs/verinode-backend#readme",
   "dependencies": {
+    "@noble/curves": "^2.2.0",
+    "@noble/ed25519": "^3.1.0",
     "cors": "^2.8.6",
     "dotenv": "^17.2.4",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "prom-client": "^15.1.3"
   }
 }
