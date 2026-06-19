@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "test": "npx ts-node --project tsconfig.json tests/slashing_sequencer.test.ts",
+    "test": "npx ts-node --project tsconfig.json tests/slashing_sequencer.test.ts && npx ts-node --project tsconfig.json tests/uptime_queries.test.ts",
     "clean": "rm -rf dist"
   },
   "repository": {
@@ -25,10 +25,12 @@
     "@noble/ed25519": "^3.1.0",
     "cors": "^2.8.6",
     "dotenv": "^17.2.4",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "pg": "^8.22.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.20.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.0"
   }
