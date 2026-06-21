@@ -49,6 +49,25 @@ app.get('/debug/traces/config', (req, res) => {
 });
 
 const port = process.env.PORT || 3000;
+
+// POST /internal/archival/renew/:contractId — required by issue #20.
+// Triggers an immediate TTL extension for a specific contract's critical
+// keys, bypassing the normal 60s poll/threshold logic. Returns the new
+// TTL and transaction hash. The listener instance is attached at
+// app.locals.archivalListener during server bootstrap (see src/blockchain/state_archival.ts).
+app.post('/internal/archival/renew/:contractId', express.json(), async (req, res) => {
+  const listener = app.locals.archivalListener;
+  if (!listener) {
+    return res.status(503).json({ error: 'archival listener not initialised' });
+  }
+  try {
+    const result = await listener.renewNow(req.params.contractId);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'renewal failed' });
+  }
+});
+
 if (require.main === module) {
   app.listen(port, () => console.log(`Server running on port ${port}`));
 }
