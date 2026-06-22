@@ -48,6 +48,25 @@ app.get('/debug/traces/config', (req, res) => {
   res.json(t.getTraceConfig());
 });
 
+// /health/pools — dual-pool connection stats for operational dashboards.
+// Returns 503 when the PriorityRouter has not been initialised yet.
+app.get('/health/pools', (req, res) => {
+  const pools = global.__verinode_pools;
+  if (!pools || typeof pools.getPoolHealth !== 'function') {
+    return res.status(503).json({ error: 'pool router not initialised' });
+  }
+  res.json(pools.getPoolHealth());
+});
+
+// /metrics — Prometheus text-format scrape endpoint.
+app.get('/metrics', (req, res) => {
+  const pools = global.__verinode_pools;
+  if (!pools || typeof pools.prometheusMetrics !== 'function') {
+    return res.status(503).type('text/plain').send('# pool router not initialised\n');
+  }
+  res.type('text/plain; version=0.0.4; charset=utf-8').send(pools.prometheusMetrics());
+});
+
 const port = process.env.PORT || 3000;
 
 // POST /internal/archival/renew/:contractId — required by issue #20.

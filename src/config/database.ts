@@ -20,6 +20,22 @@ export interface QueryMetrics {
 
 export type QueryHandler = (metrics: QueryMetrics) => void;
 
+/**
+ * Convenience factory: creates a Database instance from environment variables.
+ * Used by application bootstrap; tests should construct Database directly.
+ */
+export function createPool(overrides?: Partial<DatabaseConfig>): Database {
+  return new Database({
+    host: process.env.DB_HOST ?? 'localhost',
+    port: parseInt(process.env.DB_PORT ?? '5432', 10),
+    user: process.env.DB_USER ?? 'verinode',
+    password: process.env.DB_PASSWORD ?? '',
+    database: process.env.DB_NAME ?? 'verinode',
+    maxConnections: parseInt(process.env.DB_MAX_CONNECTIONS ?? '20', 10),
+    ...overrides,
+  });
+}
+
 export class Database {
   private pool: Pool;
   private config: DatabaseConfig;
