@@ -1,0 +1,68 @@
+{
+  "db": {
+    "host": "${DB_HOST:localhost}",
+    "port": 5432,
+    "user": "${DB_USER:verinode}",
+    "password": "${DB_PASSWORD:}",
+    "database": "${DB_NAME:verinode}",
+    "maxConnections": 20,
+    "idleTimeoutMs": 30000,
+    "connectionTimeoutMs": 10000
+  },
+  "mtls": {
+    "enabled": false,
+    "certFile": "/etc/mtls/cert.pem",
+    "keyFile": "/etc/mtls/key.pem",
+    "caFile": "/etc/mtls/ca.pem",
+    "trustDomain": "cluster.local",
+    "allowedSpiffeIds": [],
+    "certMaxValidityMs": 86400000,
+    "minSecondsUntilExpiry": 3600,
+    "reloadPollMs": 30000
+  },
+  "tls": {
+    "acme": {
+      "enabled": false,
+      "domains": ["api.verinode.example.com"],
+      "email": "admin@verinode.example.com",
+      "directoryUrl": "https://acme-v02.api.letsencrypt.org/directory",
+      "termsOfServiceAgreed": true,
+      "renewBeforeDays": 30,
+      "emergencyNotifyDays": 7,
+      "checkIntervalMs": 86400000
+    },
+    "certPath": "/etc/ssl/cert.pem",
+    "keyPath": "/etc/ssl/key.pem",
+    "chainPath": "/etc/ssl/chain.pem",
+    "webroot": "/tmp/verinode-acme"
+  },
+  "telemetry": {
+    "otel": {
+      "enabled": true,
+      "endpoint": "http://jaeger:4317",
+      "serviceName": "verinode-backend",
+      "samplingRatio": 1.0
+    }
+  },
+  "app": {
+    "port": 3000,
+    "environment": "production",
+    "logLevel": "info"
+  },
+  "staking": {
+    "maxConcurrentWorkers": 10,
+    "nonceRangeLimit": "1000"
+  },
+  "remote": {
+    "etcd": {
+      "enabled": false,
+      "endpoints": ["http://etcd:2379"],
+      "keyPrefix": "verinode/config"
+    },
+    "consul": {
+      "enabled": false,
+      "address": "consul:8500",
+      "keyPrefix": "verinode/config"
+    }
+  }
+}
