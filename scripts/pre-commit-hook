@@ -1,0 +1,32 @@
+#!/bin/bash
+if [[ "$SKIP" == *"format"* ]]; then
+  echo "Skipping format"
+else
+  if command -v npm &> /dev/null && [ -f package.json ]; then npm run format:check &> /dev/null || true; fi
+  if command -v cargo &> /dev/null && [ -f Cargo.toml ]; then cargo fmt -- --check || exit 1; fi
+fi
+if [[ "$SKIP" == *"lint"* ]]; then
+  echo "Skipping lint"
+else
+  if command -v npm &> /dev/null && [ -f package.json ]; then npm run lint &> /dev/null || true; fi
+  if command -v cargo &> /dev/null && [ -f Cargo.toml ]; then cargo clippy -- -D warnings || exit 1; fi
+fi
+if [[ "$SKIP" == *"debug"* ]]; then
+  echo "Skipping debug"
+else
+  git diff --cached --name-only | grep -v "scripts/pre-commit-hook" | xargs grep -E "console\.log|println\!|todo\!" &> /dev/null
+  if [ $? -eq 0 ]; then echo "Debug prints or leftover code detected!"; exit 1; fi
+fi
+if [[ "$SKIP" == *"large-file"* ]]; then
+  echo "Skipping size check"
+else
+  for f in $(git diff --cached --name-only); do
+    if [ -f "$f" ] && [ $(wc -c < "$f") -gt 5242880 ]; then echo "File $f exceeds 5MB"; exit 1; fi
+  done
+fi
+if [[ "$SKIP" == *"secret"* ]]; then
+  echo "Skipping secret scan"
+else
+  git diff --cached --name-only | grep -v "scripts/pre-commit-hook" | xargs grep -iE "([^A-Z0-9])(password|passwd|private_key)([^A-Z0-9])" &> /dev/null
+  if [ $? -eq 0 ]; then echo "Potential exposed secrets detected!"; exit 1; fi
+fi
