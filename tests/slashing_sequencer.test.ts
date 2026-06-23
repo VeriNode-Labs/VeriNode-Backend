@@ -2,20 +2,31 @@ import { NonceSequencer } from '../src/staking/slashing_sequencer';
 import { RpcClient, TransactionResult } from '../src/blockchain/rpc_client';
 import { NonceStore } from '../src/database/nonce_store';
 import { SlashingTx, SlashingMetrics } from '../src/staking/slashing_agent';
+import {
+  DeadLetterEntry,
+  DeadLetterQueueManager,
+  DeadLetterRepository,
+  DeadLetterWrite,
+  ListDeadLettersParams,
+} from '../src/queue/dead_letter_queue';
 import { mkdtempSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
 class FakeRpcClient extends RpcClient {
-  private simulateFailure: boolean;
+  public sendCount = 0;
 
-  constructor(fail: boolean = false) {
+  constructor(
+    private readonly alwaysFail: boolean = false,
+    private failuresBeforeSuccess: number = 0,
+  ) {
     super({ endpoint: 'http://localhost:9999', timeoutMs: 5000 });
-    this.simulateFailure = fail;
   }
 
   async sendTransaction(tx: string): Promise<TransactionResult> {
-    if (this.simulateFailure) {
+    this.sendCount++;
+    if (this.alwaysFail || this.failuresBeforeSuccess > 0) {
+      this.failuresBeforeSuccess = Math.max(0, this.failuresBeforeSuccess - 1);
       return { hash: '', success: false, error: { code: -32000, message: 'simulated failure' } };
     }
     return { hash: '0x' + Math.random().toString(16).slice(2), success: true };
@@ -25,6 +36,66 @@ class FakeRpcClient extends RpcClient {
 function createTempStore(): NonceStore {
   const dir = mkdtempSync(join(tmpdir(), 'nonce-test-'));
   return new NonceStore(dir);
+}
+
+class MemoryDeadLetterRepository implements DeadLetterRepository {
+  readonly entries = new Map<string, DeadLetterEntry>();
+
+  async insert<TMessage>(entry: DeadLetterWrite<TMessage>): Promise<DeadLetterEntry<TMessage>> {
+    const now = new Date();
+    const stored: DeadLetterEntry<TMessage> = {
+      id: `dlq-${this.entries.size + 1}`,
+      messageType: entry.messageType,
+      originalMessage: entry.originalMessage,
+      errorType: entry.error instanceof Error ? entry.error.name : typeof entry.error,
+      errorMessage: entry.error instanceof Error ? entry.error.message : String(entry.error),
+      stackTrace: entry.error instanceof Error ? entry.error.stack ?? null : null,
+      retryCount: entry.retryCount,
+      status: 'failed',
+      createdAt: now,
+      updatedAt: now,
+      expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+    };
+    this.entries.set(stored.id, stored);
+    return stored;
+  }
+
+  async list(params: ListDeadLettersParams = {}): Promise<DeadLetterEntry[]> {
+    return Array.from(this.entries.values()).filter((entry) => {
+      return !params.messageType || entry.messageType === params.messageType;
+    });
+  }
+
+  async get(id: string): Promise<DeadLetterEntry | null> {
+    return this.entries.get(id) ?? null;
+  }
+
+  async markRetrying(id: string): Promise<void> {
+    const entry = this.entries.get(id);
+    if (entry) entry.status = 'retrying';
+  }
+
+  async markFailed(id: string, error: unknown, retryCount: number): Promise<void> {
+    const entry = this.entries.get(id);
+    if (entry) {
+      entry.status = 'failed';
+      entry.errorType = error instanceof Error ? error.name : typeof error;
+      entry.errorMessage = error instanceof Error ? error.message : String(error);
+      entry.retryCount = retryCount;
+    }
+  }
+
+  async delete(id: string): Promise<boolean> {
+    return this.entries.delete(id);
+  }
+
+  async purgeExpired(): Promise<number> {
+    return 0;
+  }
+
+  async depth(): Promise<number> {
+    return this.entries.size;
+  }
 }
 
 function makeSlashingTx(validatorId: string): SlashingTx {
@@ -83,6 +154,22 @@ async function main(): Promise<void> {
     const result = await seq.onSlashingRequest(makeSlashingTx('val-fail'));
     assert(result.success === false, 'returns failure on RPC error');
     assert(result.error !== undefined, 'includes error message');
+  }
+
+  // Test 3b: DLQ captures exhausted async processing retries
+  {
+    const store = createTempStore();
+    const repo = new MemoryDeadLetterRepository();
+    const dlq = new DeadLetterQueueManager(repo, undefined, async () => undefined);
+    const rpc = new FakeRpcClient(true);
+    const seq = new NonceSequencer(rpc, store, dlq);
+    const result = await seq.onSlashingRequest(makeSlashingTx('val-dlq'));
+    const [entry] = Array.from(repo.entries.values());
+    assert(result.success === false, 'DLQ-enabled sequencer still returns failure');
+    assert(rpc.sendCount === 4, `initial attempt plus 3 retries (${rpc.sendCount})`);
+    assert(repo.entries.size === 1, 'exhausted retries write one DLQ entry');
+    assert(entry.messageType === 'slashing_request', `DLQ message type ${entry.messageType}`);
+    assert(entry.retryCount === 3, `DLQ retry count ${entry.retryCount}`);
   }
 
   // Test 4: Metrics tracking

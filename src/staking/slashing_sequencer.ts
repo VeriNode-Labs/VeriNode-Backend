@@ -1,5 +1,6 @@
 import { RpcClient, TransactionResult } from '../blockchain/rpc_client';
 import { NonceStore, WalEntry } from '../database/nonce_store';
+import { DeadLetterQueueManager } from '../queue/dead_letter_queue';
 import { SlashingTx, SlashingResult, SlashingAgent, SlashingMetrics } from './slashing_agent';
 import { trace, context, SpanStatusCode, type Span } from '@opentelemetry/api';
 
@@ -7,6 +8,19 @@ const NONCE_WINDOW_SIZE = 1024;
 const WAL_FLUSH_INTERVAL = 64;
 
 const tracer = trace.getTracer('verinode-backend.slashing-sequencer', '1.0.0');
+
+interface SlashingProcessingMessage {
+  tx: SlashingTx;
+  nonce: string;
+  txPayload: string;
+}
+
+class SlashingSubmissionError extends Error {
+  constructor(readonly result: TransactionResult) {
+    super(result.error?.message ?? 'Unknown slashing submission failure');
+    this.name = 'SlashingSubmissionError';
+  }
+}
 
 /**
  * Lightweight handle kept for backwards compatibility with the existing
@@ -52,7 +66,11 @@ export class NonceSequencer implements SlashingAgent {
   private totalFailed = 0;
   private pendingCount = 0;
 
-  constructor(rpcClient: RpcClient, nonceStore: NonceStore) {
+  constructor(
+    rpcClient: RpcClient,
+    nonceStore: NonceStore,
+    private readonly dlqManager?: DeadLetterQueueManager,
+  ) {
     this.rpcClient = rpcClient;
     this.nonceStore = nonceStore;
     this.waterMark = BigInt(nonceStore.getWaterMark());
@@ -88,14 +106,13 @@ export class NonceSequencer implements SlashingAgent {
     let result: TransactionResult;
     try {
       const txPayload = this.buildTx(tx, nonce);
+      const message: SlashingProcessingMessage = {
+        tx,
+        nonce: nonce.toString(),
+        txPayload,
+      };
       submitSpan.span.setAttribute('slashing.validator_id', tx.validatorId);
-      // Propagate the submit-span context across the await so any child
-      // spans created by HttpInstrumentation inside sendTransaction are
-      // parented to submitSpan in the trace tree.
-      result = await context.with(
-        trace.setSpan(context.active(), submitSpan.span),
-        () => this.rpcClient.sendTransaction(txPayload),
-      );
+      result = await this.submitWithRetry(message, submitSpan);
       submitSpan.span.setAttribute('slashing.tx_success', result.success);
     } catch (err) {
       endSpan(submitSpan, err instanceof Error ? err : new Error(String(err)));
@@ -166,6 +183,41 @@ export class NonceSequencer implements SlashingAgent {
       evidence: tx.evidence,
       signature: tx.signature,
     });
+  }
+
+  private async submitWithRetry(
+    message: SlashingProcessingMessage,
+    submitSpan: SpanContext,
+  ): Promise<TransactionResult> {
+    const handler = async (nextMessage: SlashingProcessingMessage): Promise<TransactionResult> => {
+      const result = await context.with(
+        trace.setSpan(context.active(), submitSpan.span),
+        () => this.rpcClient.sendTransaction(nextMessage.txPayload),
+      );
+      if (!result.success) {
+        throw new SlashingSubmissionError(result);
+      }
+      return result;
+    };
+
+    try {
+      if (this.dlqManager) {
+        return await this.dlqManager.process('slashing_request', message, handler);
+      }
+      return await handler(message);
+    } catch (err) {
+      if (err instanceof SlashingSubmissionError) {
+        return err.result;
+      }
+      return {
+        hash: '',
+        success: false,
+        error: {
+          code: -32000,
+          message: err instanceof Error ? err.message : String(err),
+        },
+      };
+    }
   }
 
   private async resubmitEntry(entry: WalEntry): Promise<void> {

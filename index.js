@@ -36,6 +36,28 @@ const express = require('express');
 const https = require('https');
 const app = express();
 
+function getDeadLetterQueue() {
+  return app.locals.deadLetterQueue || global.__verinode_dlq || null;
+}
+
+function getDeadLetterRetryHandler() {
+  return app.locals.deadLetterRetryHandler || global.__verinode_dlq_retry_handler || null;
+}
+
+function parseListQuery(query) {
+  const params = {};
+  if (typeof query.messageType === 'string' && query.messageType.trim()) {
+    params.messageType = query.messageType.trim();
+  }
+  if (typeof query.limit === 'string') {
+    params.limit = Number.parseInt(query.limit, 10);
+  }
+  if (typeof query.offset === 'string') {
+    params.offset = Number.parseInt(query.offset, 10);
+  }
+  return params;
+}
+
 function loadMtlsModule() {
   const tryPaths = [
     () => require('./dist/security/mtls'),
@@ -104,17 +126,21 @@ app.get('/health/pools', (req, res) => {
 });
 
 // /metrics — Prometheus text-format scrape endpoint.
-app.get('/metrics', (req, res) => {
+app.get('/metrics', async (req, res) => {
   const chunks = [];
   const pools = global.__verinode_pools;
   if (pools && typeof pools.prometheusMetrics === 'function') {
     chunks.push(pools.prometheusMetrics());
   }
+  const dlq = getDeadLetterQueue();
+  if (dlq && typeof dlq.prometheusMetrics === 'function') {
+    chunks.push(await dlq.prometheusMetrics());
+  }
   if (mtlsManager && typeof mtlsManager.prometheusMetrics === 'function') {
     chunks.push(mtlsManager.prometheusMetrics());
   }
   if (chunks.length === 0) {
-    return res.status(503).type('text/plain').send('# metrics not initialised\n');
+    return res.status(503).type('text/plain').send('# metrics sources not initialised\n');
   }
   res.type('text/plain; version=0.0.4; charset=utf-8').send(chunks.join('\n'));
 });
@@ -136,6 +162,68 @@ app.post('/internal/archival/renew/:contractId', express.json(), async (req, res
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'renewal failed' });
+  }
+});
+
+// DLQ management API — list, retry, purge, and TTL cleanup for failed async messages.
+app.get('/internal/dlq', async (req, res) => {
+  const dlq = getDeadLetterQueue();
+  if (!dlq) {
+    return res.status(503).json({ error: 'dead letter queue not initialised' });
+  }
+  try {
+    res.json({ entries: await dlq.list(parseListQuery(req.query)) });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'dlq list failed' });
+  }
+});
+
+app.post('/internal/dlq/:id/retry', express.json(), async (req, res) => {
+  const dlq = getDeadLetterQueue();
+  const handler = getDeadLetterRetryHandler();
+  if (!dlq) {
+    return res.status(503).json({ error: 'dead letter queue not initialised' });
+  }
+  if (typeof handler !== 'function') {
+    return res.status(503).json({ error: 'dead letter retry handler not initialised' });
+  }
+  try {
+    const result = await dlq.retry(req.params.id, handler);
+    res.json({ retried: true, result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'dlq retry failed';
+    if (message.includes('not found')) {
+      return res.status(404).json({ error: message });
+    }
+    res.status(500).json({ retried: false, error: message });
+  }
+});
+
+app.delete('/internal/dlq/expired', async (req, res) => {
+  const dlq = getDeadLetterQueue();
+  if (!dlq) {
+    return res.status(503).json({ error: 'dead letter queue not initialised' });
+  }
+  try {
+    res.json({ purged: await dlq.purgeExpired() });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'dlq purge failed' });
+  }
+});
+
+app.delete('/internal/dlq/:id', async (req, res) => {
+  const dlq = getDeadLetterQueue();
+  if (!dlq) {
+    return res.status(503).json({ error: 'dead letter queue not initialised' });
+  }
+  try {
+    const purged = await dlq.purge(req.params.id);
+    if (!purged) {
+      return res.status(404).json({ error: 'dead letter entry not found' });
+    }
+    res.json({ purged: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'dlq purge failed' });
   }
 });
 
