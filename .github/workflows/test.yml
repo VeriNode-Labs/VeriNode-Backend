@@ -1,23 +1,82 @@
-name: Backend API Tests
+name: Backend CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
-  test:
+  # Detect which paths changed so downstream jobs can skip when only docs changed.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      src: ${{ steps.filter.outputs.src }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            src:
+              - 'src/**'
+              - 'tests/**'
+              - 'index.js'
+              - 'package*.json'
+              - 'tsconfig.json'
+
+  # TypeScript type-check — skipped when only docs/markdown changed.
+  lint:
+    name: Type-check
+    needs: changes
+    if: needs.changes.outputs.src == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - name: Use Node.js
-        uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          
-      - name: Install Dependencies
+          cache: "npm"                  # caches ~/.npm keyed on package-lock.json hash
+      - name: Install dependencies
         run: npm ci
-        
-      - name: Run Tests
-        run: npm test
+      - name: TypeScript type-check
+        run: npx tsc --noEmit
+
+  # Fan out the four test suites across parallel runners.
+  # Each runner gets its own warm npm cache via setup-node's built-in cache layer.
+  # GitHub evicts the oldest cache entries when the 10 GB per-repo limit is reached
+  # (equivalent to LRU eviction).
+  test:
+    name: Test / ${{ matrix.suite }}
+    needs: changes
+    if: needs.changes.outputs.src == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false          # let all suites finish even if one fails
+      matrix:
+        suite:
+          - slashing_sequencer
+          - uptime_queries
+          - tracer
+          - pool_isolation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - name: Restore node_modules cache
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node_modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node_modules-
+      - name: Install dependencies
+        if: steps.nm-cache.outputs.cache-hit != 'true'
+        run: npm ci
+      - name: Run ${{ matrix.suite }}
+        run: npx ts-node --project tsconfig.json tests/${{ matrix.suite }}.test.ts
