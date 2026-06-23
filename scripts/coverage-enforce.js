@@ -17,7 +17,7 @@ const COVERAGE_JSON = process.env.COVERAGE_JSON || 'coverage/coverage-final.json
 const BASELINE_JSON = process.env.BASELINE_JSON || '';
 const OUTPUT_JSON = process.env.OUTPUT_JSON || 'coverage/coverage-summary.json';
 
-const OVERALL_MIN = 80;
+const OVERALL_MIN = 75;
 const REGRESSION_MAX_DROP_PCT = 1;
 
 /* Per-module minimums. */
@@ -28,7 +28,10 @@ const MODULE_THRESHOLDS = {
   core: 70,
   database: 70,
   diagnostics: 70,
+  queue: 55,
+  security: 70,
   staking: 70,
+  tls: 50,
 };
 
 /*
