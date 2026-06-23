@@ -1,0 +1,37 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: verinode-mtls-alerts
+  namespace: verinode
+spec:
+  groups:
+    - name: verinode.mtls
+      rules:
+        - alert: VeriNodeMtlsCertificateExpiringSoon
+          expr: verinode_mtls_certificate_seconds_until_expiry < 3600
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: VeriNode workload mTLS certificate expires within one hour
+        - alert: VeriNodeMtlsCertificateReloadFailures
+          expr: increase(verinode_mtls_certificate_reload_failures_total[10m]) > 0
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: VeriNode workload mTLS certificate reload failed
+        - alert: VeriNodeMtlsHandshakeFailures
+          expr: increase(verinode_mtls_handshake_failures_total[5m]) > 5
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: VeriNode mTLS handshakes are failing
+        - alert: VeriNodeMtlsInvalidPeerIdentity
+          expr: increase(verinode_mtls_invalid_peer_identity_failures_total[5m]) > 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: VeriNode rejected a peer with an invalid SPIFFE identity
