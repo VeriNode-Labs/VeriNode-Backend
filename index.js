@@ -87,8 +87,38 @@ app.post('/internal/archival/renew/:contractId', express.json(), async (req, res
   }
 });
 
+async function startServer() {
+  const httpServer = app.listen(port, () => console.log(`Server running on port ${port}`));
+  try {
+    let tlsBootstrap = null;
+    const tryPaths = [
+      () => require('./dist/tls/acme_rotation'),
+      () => {
+        require('ts-node').register({ transpileOnly: true, project: './tsconfig.json' });
+        return require('./src/tls/acme_rotation');
+      },
+    ];
+    for (const load of tryPaths) {
+      try {
+        tlsBootstrap = load();
+        break;
+      } catch (err) {
+        // try next path
+      }
+    }
+    if (tlsBootstrap && typeof tlsBootstrap.bootstrapTlsFromEnv === 'function') {
+      await tlsBootstrap.bootstrapTlsFromEnv(app, { httpPort: port });
+    }
+  } catch (err) {
+    httpServer.close();
+    console.error('[index] TLS ACME bootstrap failed', err);
+    process.exitCode = 1;
+  }
+}
+
+
 if (require.main === module) {
-  app.listen(port, () => console.log(`Server running on port ${port}`));
+  void startServer();
 }
 
 module.exports = app;

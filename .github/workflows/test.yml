@@ -44,7 +44,7 @@ jobs:
       - name: TypeScript type-check
         run: npx tsc --noEmit
 
-  # Fan out the four test suites across parallel runners.
+  # Fan out the test suites across parallel runners.
   # Each runner gets its own warm npm cache via setup-node's built-in cache layer.
   # GitHub evicts the oldest cache entries when the 10 GB per-repo limit is reached
   # (equivalent to LRU eviction).
@@ -61,6 +61,7 @@ jobs:
           - uptime_queries
           - tracer
           - pool_isolation
+          - tls_rotation
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
