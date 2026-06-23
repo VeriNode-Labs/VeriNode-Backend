@@ -1,0 +1,88 @@
+name: Versioned API Documentation
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust Nightly
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Generate Rustdoc JSON
+        run: |
+          cargo +nightly rustdoc -- -Z unstable-options --output-format json
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Documentation Viewer
+        run: |
+          mkdir -p dist/${{ github.ref_name }}
+          cat << 'INDEX' > dist/${{ github.ref_name }}/index.html
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>API Reference - ${{ github.ref_name }}</title>
+              <style>
+                  body { font-family: system-ui, sans-serif; margin: 2rem; background: #f9f9f9; color: #333; }
+                  header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #ccc; padding-bottom: 1rem; }
+                  input { padding: 0.5rem; width: 300px; border: 1px solid #ccc; border-radius: 4px; }
+                  pre { background: #fff; padding: 1rem; border: 1px solid #ddd; border-radius: 4px; overflow-x: auto; }
+              </style>
+          </head>
+          <body>
+              <header>
+                  <h1>API Reference (${{ github.ref_name }})</h1>
+                  <input type="text" id="search" placeholder="Search types, traits...">
+              </header>
+              <main>
+                  <h2>Rendered JSON Schema Output</h2>
+                  <div id="output"></div>
+              </main>
+              <script>
+                  const data = JSON.parse(document.getElementById('raw-data').textContent);
+                  document.getElementById('output').innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+              </script>
+              <script type="application/json" id="raw-data">
+          INDEX
+          cat target/doc/*.json >> dist/${{ github.ref_name }}/index.html
+          cat << 'END' >> dist/${{ github.ref_name }}/index.html
+              </script>
+          </body>
+          </html>
+          END
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
