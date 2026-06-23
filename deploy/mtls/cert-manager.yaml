@@ -1,0 +1,56 @@
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: verinode-selfsigned-bootstrap
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: verinode-internal-root-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: verinode.internal
+  secretName: verinode-internal-root-ca
+  duration: 8760h
+  renewBefore: 720h
+  issuerRef:
+    name: verinode-selfsigned-bootstrap
+    kind: ClusterIssuer
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: verinode-internal-ca
+spec:
+  ca:
+    secretName: verinode-internal-root-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: verinode-backend-workload
+  namespace: verinode
+spec:
+  secretName: verinode-backend-mtls
+  duration: 24h
+  renewBefore: 6h
+  issuerRef:
+    name: verinode-internal-ca
+    kind: ClusterIssuer
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  usages:
+    - digital signature
+    - key encipherment
+    - server auth
+    - client auth
+  uris:
+    - spiffe://cluster.local/ns/verinode/sa/verinode-backend

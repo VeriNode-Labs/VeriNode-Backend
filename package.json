@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "test": "npx ts-node --project tsconfig.json tests/slashing_sequencer.test.ts && npx ts-node --project tsconfig.json tests/uptime_queries.test.ts && npx ts-node --project tsconfig.json tests/tracer.test.ts && npx ts-node --project tsconfig.json tests/pool_isolation.test.ts",
+    "test": "npx ts-node --project tsconfig.json tests/slashing_sequencer.test.ts && npx ts-node --project tsconfig.json tests/uptime_queries.test.ts && npx ts-node --project tsconfig.json tests/tracer.test.ts && npx ts-node --project tsconfig.json tests/pool_isolation.test.ts && npx ts-node --project tsconfig.json tests/mtls.test.ts",
     "clean": "rm -rf dist"
   },
   "repository": {
