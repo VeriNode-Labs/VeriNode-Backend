@@ -29,6 +29,7 @@ const MODULE_THRESHOLDS = {
   database: 70,
   diagnostics: 70,
   queue: 55,
+  reputation: 70,
   security: 70,
   staking: 70,
   tls: 50,
