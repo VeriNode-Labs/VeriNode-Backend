@@ -16,6 +16,7 @@ const TEST_FILES = [
   'tests/blockchain/rpc_client.test.ts',
   'tests/blockchain/transaction_builder.test.ts',
   'tests/config/database.test.ts',
+  'tests/config.test.ts',
   'tests/core/attestation/engine.test.ts',
   'tests/core/crypto/signature.test.ts',
   'tests/core/crypto/aggregate_sig.test.ts',
