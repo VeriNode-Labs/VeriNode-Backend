@@ -179,6 +179,109 @@ async function bootstrap() {
 function getDeadLetterQueue() {
   return app.locals.deadLetterQueue || global.__verinode_dlq || null;
 }
+const mtlsManager = mtls && typeof mtls.createMtlsManagerFromEnv === 'function'
+  ? mtls.createMtlsManagerFromEnv()
+  : null;
+global.__verinode_mtls = mtlsManager;
+
+app.use((req, res, next) => {
+  if (!mtlsManager || !mtlsManager.current) return next();
+  if (!req.client.authorized) {
+    mtlsManager.recordHandshakeFailure();
+    return res.status(401).json({ error: 'mTLS client certificate required' });
+  }
+  const peerCert = req.socket.getPeerCertificate();
+  if (!mtls.validatePeerCertificate(peerCert, mtlsManager.config ?? {
+    trustDomain: process.env.SPIFFE_TRUST_DOMAIN || 'cluster.local',
+    allowedSpiffeIds: (process.env.SPIFFE_ALLOWED_IDS || '').split(',').map((v) => v.trim()).filter(Boolean),
+  })) {
+    mtlsManager.recordInvalidPeerIdentity();
+    return res.status(403).json({ error: 'mTLS peer SPIFFE identity is not allowed' });
+  }
+  return next();
+});
+
+app.get('/', (req, res) => res.send('VeriNode API is running'));
+
+// Auth module — challenge-response wallet session token generation (issue #16).
+app.use('/api/v1/auth', express.json(), (() => {
+  const tryPaths = [
+    () => require('./dist/api/auth').router,
+    () => {
+      require('ts-node').register({ transpileOnly: true, project: './tsconfig.json' });
+      return require('./src/api/auth').router;
+    },
+  ];
+  for (const load of tryPaths) {
+    try {
+      return load();
+    } catch (err) {
+      // try next path
+    }
+  }
+  throw new Error('Auth module could not be loaded');
+})());
+
+// /debug/traces/config — required by issue #15. Returns current sampler
+// configuration, exporter endpoint, and span queue depth so Jaeger / Tempo
+// operators can inspect runtime state.
+app.get('/debug/traces/config', (req, res) => {
+  const t = global.__verinode_tracing;
+  if (!t || typeof t.getTraceConfig !== 'function') {
+    return res.status(503).json({ error: 'tracing not initialised' });
+  }
+  res.json(t.getTraceConfig());
+});
+
+// /health/pools — dual-pool connection stats for operational dashboards.
+// Returns 503 when the PriorityRouter has not been initialised yet.
+app.get('/health/pools', (req, res) => {
+  const pools = global.__verinode_pools;
+  if (!pools || typeof pools.getPoolHealth !== 'function') {
+    return res.status(503).json({ error: 'pool router not initialised' });
+  }
+  res.json(pools.getPoolHealth());
+});
+
+// /metrics — Prometheus text-format scrape endpoint.
+app.get('/metrics', async (req, res) => {
+  const chunks = [];
+  const pools = global.__verinode_pools;
+  if (pools && typeof pools.prometheusMetrics === 'function') {
+    chunks.push(pools.prometheusMetrics());
+  }
+  const dlq = getDeadLetterQueue();
+  if (dlq && typeof dlq.prometheusMetrics === 'function') {
+    chunks.push(await dlq.prometheusMetrics());
+  }
+  if (mtlsManager && typeof mtlsManager.prometheusMetrics === 'function') {
+    chunks.push(mtlsManager.prometheusMetrics());
+  }
+  if (chunks.length === 0) {
+    return res.status(503).type('text/plain').send('# metrics sources not initialised\n');
+  }
+  res.type('text/plain; version=0.0.4; charset=utf-8').send(chunks.join('\n'));
+});
+
+const port = process.env.PORT || 3000;
+
+// POST /internal/archival/renew/:contractId — required by issue #20.
+// Triggers an immediate TTL extension for a specific contract's critical
+// keys, bypassing the normal 60s poll/threshold logic. Returns the new
+// TTL and transaction hash. The listener instance is attached at
+// app.locals.archivalListener during server bootstrap (see src/blockchain/state_archival.ts).
+app.post('/internal/archival/renew/:contractId', express.json(), async (req, res) => {
+  const listener = app.locals.archivalListener;
+  if (!listener) {
+    return res.status(503).json({ error: 'archival listener not initialised' });
+  }
+  try {
+    const result = await listener.renewNow(req.params.contractId);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'renewal failed' });
+  }
+});
 
 async function bootstrapTls(httpServer, httpPort) {
   try {
