@@ -10,6 +10,19 @@ import {
   validateSpiffeIdentity,
 } from '../src/security/mtls';
 
+if (process.platform === 'win32') {
+  const gitPaths = [
+    'C:\\Program Files\\Git\\usr\\bin',
+    'C:\\Program Files\\Git\\mingw64\\bin'
+  ];
+  for (const gitPath of gitPaths) {
+    if (existsSync(gitPath)) {
+      process.env.PATH = `${gitPath};${process.env.PATH}`;
+      break;
+    }
+  }
+}
+
 interface CertPaths {
   caKey: string;
   caCert: string;

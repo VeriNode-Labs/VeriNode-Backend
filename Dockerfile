@@ -8,8 +8,7 @@ WORKDIR /app
 FROM base AS deps
 ENV NODE_ENV=development
 COPY package.json package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci
+RUN npm ci
 
 FROM deps AS build
 COPY tsconfig.json ./
@@ -19,8 +18,7 @@ RUN npm run build
 FROM base AS runtime-deps
 ENV NODE_ENV=production
 COPY package.json package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 FROM base AS runtime
 ENV NODE_ENV=production
