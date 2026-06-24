@@ -28,7 +28,7 @@ export interface ValidationResult {
 export class ConfigValidator {
   private schema: JSONSchema7;
 
-  constructor(schema?: JSONSchema7) {
+  constructor(schema?: any) {
     this.schema = schema || mainSchema;
   }
 

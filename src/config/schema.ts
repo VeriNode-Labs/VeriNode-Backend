@@ -1,93 +1,5 @@
 import { JSONSchema7 } from 'json-schema';
 
-export interface ConfigSchema {
-  $schema: string;
-  title: string;
-  description: string;
-  type: string;
-  properties: {
-    // Database configuration
-    db?: {
-      host: string;
-      port: number;
-      user: string;
-      password: string;
-      database: string;
-      maxConnections?: number;
-      idleTimeoutMs?: number;
-      connectionTimeoutMs?: number;
-    };
-    // mTLS configuration
-    mtls?: {
-      enabled: boolean;
-      certFile?: string;
-      keyFile?: string;
-      caFile?: string;
-      trustDomain: string;
-      allowedSpiffeIds: string[];
-      certMaxValidityMs: number;
-      minSecondsUntilExpiry: number;
-      reloadPollMs: number;
-    };
-    // TLS ACME configuration
-    tls?: {
-      acme?: {
-        enabled: boolean;
-        domains: string[];
-        email: string;
-        directoryUrl: string;
-        termsOfServiceAgreed: boolean;
-        renewBeforeDays: number;
-        emergencyNotifyDays: number;
-        checkIntervalMs: number;
-      };
-      certPath: string;
-      keyPath: string;
-      chainPath?: string;
-      webroot: string;
-    };
-    // Telemetry configuration
-    telemetry?: {
-      otel?: {
-        enabled: boolean;
-        endpoint: string;
-        serviceName: string;
-        samplingRatio: number;
-      };
-    };
-    // Application configuration
-    app?: {
-      port: number;
-      environment: 'development' | 'production' | 'test';
-      logLevel: 'debug' | 'info' | 'warn' | 'error';
-    };
-    // Staking configuration
-    staking?: {
-      maxConcurrentWorkers: number;
-      nonceRangeLimit: string; // serialized bigint
-    };
-    // Remote config sources
-    remote?: {
-      etcd?: {
-        enabled: boolean;
-        endpoints: string[];
-        username?: string;
-        password?: string;
-        keyPrefix: string;
-        watchIntervalMs: number;
-      };
-      consul?: {
-        enabled: boolean;
-        address: string;
-        token?: string;
-        keyPrefix: string;
-        watchIntervalMs: number;
-      };
-    };
-  };
-  required: string[];
-}
-
 export const databaseSchema: JSONSchema7 = {
   type: 'object',
   properties: {
@@ -244,7 +156,7 @@ export const remoteSchema: JSONSchema7 = {
   }
 };
 
-export const mainSchema: ConfigSchema = {
+export const mainSchema: JSONSchema7 = {
   $schema: 'http://json-schema.org/draft-07/schema#',
   title: 'VeriNode Backend Configuration',
   description: 'Centralized configuration schema for VeriNode backend services',

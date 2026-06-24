@@ -53,29 +53,33 @@ export class ConfigEventBus extends EventEmitter {
   /**
    * Subscribe to configuration updates
    */
-  onUpdate(callback: (data: any) => void): () => void {
-    return this.on('updated', (payload) => callback(payload.data));
+  onUpdate(callback: (data: any) => void): this {
+    this.on('updated', (payload) => callback(payload.data));
+    return this;
   }
 
   /**
    * Subscribe to configuration errors
    */
-  onError(callback: (error: Error) => void): () => void {
-    return this.on('error', (payload) => payload.error && callback(payload.error));
+  onError(callback: (error: Error) => void): this {
+    this.on('error', (payload) => payload.error && callback(payload.error));
+    return this;
   }
 
   /**
    * Subscribe to reload events
    */
-  onReload(callback: () => void): () => void {
-    return this.on('reload_initiated', () => callback());
+  onReload(callback: () => void): this {
+    this.on('reload_initiated', () => callback());
+    return this;
   }
 
   /**
    * Subscribe to reload completion
    */
-  onReloadComplete(callback: (data: any) => void): () => void {
-    return this.on('reload_complete', (payload) => callback(payload.data));
+  onReloadComplete(callback: (data: any) => void): this {
+    this.on('reload_complete', (payload) => callback(payload.data));
+    return this;
   }
 }
 

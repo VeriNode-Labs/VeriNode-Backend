@@ -165,7 +165,7 @@ export class ConfigLoader {
     }
 
     this.cache = result.data;
-    return this.cache;
+    return this.cache!;
   }
 
   /**
@@ -175,7 +175,7 @@ export class ConfigLoader {
     if (!this.cache) {
       await this.load();
     }
-    return this.cache;
+    return this.cache!;
   }
 
   /**

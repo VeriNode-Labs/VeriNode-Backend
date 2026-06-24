@@ -1,10 +1,13 @@
-export { ConfigSchema, mainSchema, databaseSchema, mtlsSchema, tlsSchema, telemetrySchema, appSchema, stakingSchema, remoteSchema } from './schema';
+export { mainSchema, databaseSchema, mtlsSchema, tlsSchema, telemetrySchema, appSchema, stakingSchema, remoteSchema } from './schema';
 export { ConfigValidationError, ValidationResult, ConfigValidator } from './validator';
 export { ConfigEvent, ConfigEventPayload, ConfigEventBus, configEventBus } from './eventbus';
 export { ConfigSource, ConfigLoader } from './loader';
 export { ConfigManager, ConfigChangeCallback, getConfigManager } from './manager';
-export { deepMerge, mergeConfigs, normalizeEnvKey, flattenToEnv } from './validator';
-export { deepClone, deepMerge as utils_deepMerge, getIn, setIn, deleteIn, parseEnvValue, formatErrorPath } from './utils';
+export { mergeConfigs, normalizeEnvKey, flattenToEnv } from './validator';
+export { deepClone, deepMerge, getIn, setIn, deleteIn, parseEnvValue, formatErrorPath } from './utils';
+
+import { getConfigManager } from './manager';
+import { ConfigValidationError } from './validator';
 
 /**
  * Default configuration file path
@@ -55,6 +58,14 @@ export function onConfigChange(callback: (oldConfig: any, newConfig: any) => voi
 export function offConfigChange(id: string): void {
   const manager = getConfigManager();
   manager.offChange(id);
+}
+
+/**
+ * Subscribe to changes on a specific config path
+ */
+export function onChangePath(path: string, callback: (value: any) => void, id?: string): string {
+  const manager = getConfigManager();
+  return manager.onChangePath(path, callback, id);
 }
 
 /**
