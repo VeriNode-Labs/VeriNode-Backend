@@ -128,6 +128,25 @@ app.use((req, res, next) => {
 
 app.get('/', (req, res) => res.send('VeriNode API is running'));
 
+// Auth module — challenge-response wallet session token generation (issue #16).
+app.use('/api/v1/auth', express.json(), (() => {
+  const tryPaths = [
+    () => require('./dist/api/auth').router,
+    () => {
+      require('ts-node').register({ transpileOnly: true, project: './tsconfig.json' });
+      return require('./src/api/auth').router;
+    },
+  ];
+  for (const load of tryPaths) {
+    try {
+      return load();
+    } catch (err) {
+      // try next path
+    }
+  }
+  throw new Error('Auth module could not be loaded');
+})());
+
 // /debug/traces/config — required by issue #15. Returns current sampler
 // configuration, exporter endpoint, and span queue depth so Jaeger / Tempo
 // operators can inspect runtime state.

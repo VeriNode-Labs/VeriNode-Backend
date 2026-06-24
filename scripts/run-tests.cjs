@@ -28,6 +28,7 @@ const TEST_FILES = [
   'tests/tracer.test.ts',
   'tests/pool_isolation.test.ts',
   'tests/state_archival.test.ts',
+  'tests/auth.test.ts',
 ];
 
 async function main() {
