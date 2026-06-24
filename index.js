@@ -165,64 +165,6 @@ app.post('/internal/archival/renew/:contractId', express.json(), async (req, res
   }
 });
 
-// ── DLQ management API routes ──────────────────────────────────────────
-// These rely on app.locals.deadLetterQueue and
-// app.locals.deadLetterRetryHandler being set by the caller (or on
-// global.__verinode_dlq / global.__verinode_dlq_retry_handler).
-
-app.get('/internal/dlq', async (req, res) => {
-  const dlq = getDeadLetterQueue();
-  if (!dlq || typeof dlq.list !== 'function') {
-    return res.status(503).json({ error: 'dead letter queue not available' });
-  }
-  try {
-    const entries = await dlq.list(parseListQuery(req.query));
-    res.json({ entries });
-  } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : 'list failed' });
-  }
-});
-
-app.post('/internal/dlq/:id/retry', express.json(), async (req, res) => {
-  const dlq = getDeadLetterQueue();
-  const handler = getDeadLetterRetryHandler();
-  if (!dlq || typeof dlq.retry !== 'function') {
-    return res.status(503).json({ error: 'dead letter queue not available' });
-  }
-  try {
-    const result = await dlq.retry(req.params.id, handler);
-    res.json({ retried: true, result });
-  } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : 'retry failed' });
-  }
-});
-
-app.delete('/internal/dlq/expired', async (req, res) => {
-  const dlq = getDeadLetterQueue();
-  if (!dlq || typeof dlq.purgeExpired !== 'function') {
-    return res.status(503).json({ error: 'dead letter queue not available' });
-  }
-  try {
-    const count = await dlq.purgeExpired();
-    res.json({ purged: count });
-  } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : 'purge expired failed' });
-  }
-});
-
-app.delete('/internal/dlq/:id', async (req, res) => {
-  const dlq = getDeadLetterQueue();
-  if (!dlq || typeof dlq.purge !== 'function') {
-    return res.status(503).json({ error: 'dead letter queue not available' });
-  }
-  try {
-    const purged = await dlq.purge(req.params.id);
-    res.json({ purged });
-  } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : 'purge failed' });
-  }
-});
-
 async function startServer() {
   const httpServer = app.listen(port, () => console.log(`Server running on port ${port}`));
   try {

@@ -20,7 +20,6 @@ const TEST_FILES = [
   'tests/core/crypto/signature.test.ts',
   'tests/core/crypto/aggregate_sig.test.ts',
   'tests/dead_letter_queue.test.ts',
-  'tests/dlq_api.test.js',
   'tests/mtls.test.ts',
   'tests/slashing_sequencer.test.ts',
   'tests/staking/slashing_sequencer.test.ts',
