@@ -155,6 +155,23 @@ async function main(): Promise<void> {
     }
   }
 
+  // ── submitBatchRenewal: with preflight ───────────────────────────
+  {
+    const rpc = new FakeRpc();
+    const builder = new TransactionBuilder(rpc);
+    const pointers: ContractDataPointer[] = [{ contractId: 'C1', dataKey: 'attestation_root' }];
+    const preflight = {
+      instructions: 100,
+      writeBytes: 200,
+      estimatedGas: 150,
+      simulationDurationMs: 10,
+      storageKeysAccessed: [],
+    };
+    const result = await builder.submitBatchRenewal({ pointers, extendToLedgers: 10000, preflight });
+    assert(result.txResult.success === true, 'preflight renewal succeeds');
+    assert(rpc.getCallCount() === 1, 'sendTransaction called once');
+  }
+
   const total = passed + failed;
   console.log(`\n${total} tests: ${passed} passed, ${failed} failed\n`);
   process.exit(failed > 0 ? 1 : 0);

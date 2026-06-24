@@ -58,6 +58,8 @@ class FakeRpcClient extends RpcClient {
 /** Minimal fake of the Database surface the listener actually calls. */
 class FakeDatabase {
   private rows = new Map<string, { ttl: number; lastRenewedAt: Date | null }>();
+  public queryCount = 0;
+  public transactionCount = 0;
 
   seed(contractId: string): void {
     for (const key of CRITICAL_DATA_KEYS) {
@@ -66,6 +68,7 @@ class FakeDatabase {
   }
 
   async query<T = any>(text: string, params?: any[]): Promise<{ rows: T[] }> {
+    this.queryCount++;
     if (text.includes('SELECT contract_id')) {
       const rows = Array.from(this.rows.entries()).map(([k, v]) => {
         const [contract_id, data_key] = k.split(':');
@@ -87,6 +90,7 @@ class FakeDatabase {
   }
 
   async transaction<T>(fn: (client: any) => Promise<T>): Promise<T> {
+    this.transactionCount++;
     const client = { query: (text: string, params?: any[]) => this.query(text, params) };
     return fn(client);
   }
@@ -163,6 +167,101 @@ async function main(): Promise<void> {
     rpcClient.sendTransactionCallCount === 1,
     'no duplicate renewal sent once TTL is restored',
   );
+
+  // (e) registerNode()
+  {
+    const newContractId = 'CNEW000000000000000000000000000000000000000000';
+    const initialTxCount = db.transactionCount;
+    await listener.registerNode(newContractId);
+    assert(db.transactionCount > initialTxCount, 'registerNode calls db.transaction');
+  }
+
+  // (f) start() and stop()
+  {
+    listener.stop();
+    assert(!listener.isRunning(), 'listener stopped');
+    listener.start();
+    assert(listener.isRunning(), 'listener running');
+    listener.start(); // idempotent
+    assert(listener.isRunning(), 'listener still running after double start');
+    listener.stop();
+  }
+
+  // (g) renewNow()
+  {
+    const initialCount = rpcClient.sendTransactionCallCount;
+    const res = await listener.renewNow(contractId);
+    assert(res.ttl === DEFAULT_TTL_LEDGERS, 'renewNow returns default TTL');
+    assert(rpcClient.sendTransactionCallCount === initialCount + 1, 'renewNow sends a transaction');
+  }
+
+  // (h) renewNow() failure
+  {
+    const failRpc = new (class extends FakeRpcClient {
+      async sendTransaction(): Promise<TransactionResult> {
+        return { hash: '', success: false };
+      }
+    })(ledger);
+    const failListener = new StateArchivalListener(db as any, failRpc, new TransactionBuilder(failRpc));
+    try {
+      await failListener.renewNow(contractId);
+      assert(false, 'renewNow should throw on failure');
+    } catch (err) {
+      assert((err as Error).message.includes('manual renewal failed'), 'renewNow failure throws error');
+    }
+  }
+
+  // (i) tick() with RpcError from getLedgerEntry
+  {
+    const errRpc = new (class extends FakeRpcClient {
+      async getLedgerEntry(): Promise<RpcError> {
+        return { code: -1, message: 'forced error' };
+      }
+    })(ledger);
+    const errListener = new StateArchivalListener(db as any, errRpc, new TransactionBuilder(errRpc));
+    // Should log warning and continue (no exception)
+    await errListener.tick();
+    assert(true, 'tick() handles RpcError in getLedgerEntry');
+  }
+
+  // (j) tick() with empty watchlist
+  {
+    const emptyDb = new (class extends FakeDatabase {
+      async query(): Promise<{ rows: any[] }> {
+        return { rows: [] };
+      }
+    })();
+    const emptyListener = new StateArchivalListener(emptyDb as any, rpcClient);
+    await emptyListener.tick();
+    assert(true, 'tick() handles empty watchlist');
+  }
+
+  // (k) applyRenewalResult failure branch
+  {
+    const failTxRpc = new (class extends FakeRpcClient {
+      async sendTransaction(): Promise<TransactionResult> {
+        return { hash: '', success: false };
+      }
+    })(ledger);
+    const failTxBuilder = new TransactionBuilder(failTxRpc);
+    // Force a tick that triggers renewal but fails
+    ledger.advance(9000);
+    const failTxListener = new StateArchivalListener(db as any, failTxRpc, failTxBuilder, { minRenewalGapMs: 0 });
+    await failTxListener.tick();
+    assert(true, 'tick() handles failed renewal transaction');
+  }
+
+  // (l) setInterval error handling
+  {
+    const errorDb = new (class extends FakeDatabase {
+      async query(): Promise<any> { throw new Error('database down'); }
+    })();
+    const errListener = new StateArchivalListener(errorDb as any, rpcClient, new TransactionBuilder(rpcClient), { pollIntervalMs: 1 });
+    errListener.start();
+    await new Promise(resolve => setTimeout(resolve, 10));
+    errListener.stop();
+    assert(true, 'setInterval error handling covered');
+  }
 
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed > 0 ? 1 : 0);

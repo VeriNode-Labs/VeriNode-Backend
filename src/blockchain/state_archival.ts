@@ -65,7 +65,11 @@ export class StateArchivalListener {
     }, this.pollIntervalMs);
     // Run an immediate tick on start rather than waiting a full interval,
     // so a process restart near TTL expiry doesn't lose extra time.
-    void this.tick();
+    this.tick().catch((err) => {
+      this.log.error('initial tick failed', {
+        'error.message': err instanceof Error ? err.message : String(err),
+      });
+    });
   }
 
   stop(): void {
