@@ -68,7 +68,7 @@ async function bootstrap() {
   } else if (tracing && typeof tracing.initTracing === 'function') {
     tracing.initTracing();
   } else {
-    console.warn('[index] OpenTelemetry tracer not loaded; running without tracing');
+    indexLog.warn('OpenTelemetry tracer not loaded; running without tracing');
   }
   global.__verinode_tracing = tracing;
 
@@ -190,7 +190,7 @@ async function bootstrapTls(httpServer, httpPort) {
     }
   } catch (err) {
     httpServer.close();
-    console.error('[index] TLS ACME bootstrap failed', err);
+    indexLog.error('TLS ACME bootstrap failed', { 'error.message': err instanceof Error ? err.message : String(err) });
     process.exitCode = 1;
   }
 }

@@ -112,6 +112,7 @@ export class MtlsCertificateManager {
   private certificateReloadsTotal = 0;
   private handshakeFailuresTotal = 0;
   private invalidPeerIdentityFailuresTotal = 0;
+  private log = createLogger('mtls', { 'tls.mode': 'mtls' });
 
   constructor(public readonly config: MtlsConfig) {
     if (config.enabled) this.assertConfigured();
@@ -189,7 +190,9 @@ export class MtlsCertificateManager {
       try {
         this.reloadIfChanged();
       } catch (err) {
-        console.error('[mTLS] certificate reload failed:', err instanceof Error ? err.message : err);
+        this.log.error('certificate reload failed', {
+          'error.message': err instanceof Error ? err.message : String(err),
+        });
       }
     };
     this.watcher = watch(this.config.certFile!, { persistent: false }, onChange);

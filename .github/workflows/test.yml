@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: ["main"]
 
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+
 jobs:
   # Detect which paths changed so downstream jobs can skip when only docs changed.
   changes:
@@ -68,17 +73,119 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: "npm"
-      - name: Restore node_modules cache
-        id: nm-cache
-        uses: actions/cache@v4
-        with:
-          path: node_modules
-          key: ${{ runner.os }}-node_modules-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node_modules-
-      - name: Install dependencies
-        if: steps.nm-cache.outputs.cache-hit != 'true'
+      - name: Install Dependencies
         run: npm ci
-      - name: Run ${{ matrix.suite }}
-        run: npx ts-node --project tsconfig.json tests/${{ matrix.suite }}.test.ts
+      - name: Run Tests
+        run: npm test
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: npx c8 --all --src src --exclude scripts --exclude tests --exclude node_modules --reporter lcov --reporter json --reporter text --report-dir coverage node scripts/run-tests.cjs
+
+      - name: Download baseline from main (PR only)
+        if: github.event_name == 'pull_request'
+        run: |
+          mkdir -p coverage/baseline
+          gh run download --repo ${{ github.repository }} --branch main --workflow 'Backend API Tests' --status success --name coverage-baseline --dir coverage/baseline 2>/dev/null || echo "warning: no baseline artifact found (first main run?)"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Enforce coverage thresholds
+        id: enforce
+        run: node scripts/coverage-enforce.js
+        env:
+          BASELINE_JSON: ${{ github.event_name == 'pull_request' && 'coverage/baseline/coverage-summary.json' || '' }}
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+
+      - name: Upload coverage baseline
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-baseline
+          path: coverage/coverage-summary.json
+
+      - name: Post PR comment
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let summary;
+            try {
+              summary = JSON.parse(fs.readFileSync('coverage/coverage-summary.json', 'utf-8'));
+            } catch {
+              console.log('No coverage summary available');
+              return;
+            }
+
+            let body = `## Coverage Report\n\n`;
+            body += `### Overall: **${summary.overallPct}%** — ${summary.overallPass ? '✅' : '❌'}\n\n`;
+            body += `| Module | Coverage | Threshold | Status |\n`;
+            body += `|--------|----------|-----------|--------|\n`;
+
+            for (const [mod, data] of Object.entries(summary.modules)) {
+              const threshold = data.threshold !== null ? `≥${data.threshold}%` : '—';
+              body += `| ${mod} | ${data.pct}% | ${threshold} | ${data.pass ? '✅' : '❌'} |\n`;
+            }
+
+            body += `\n### Threshold Results\n\n`;
+            body += `| Check | Threshold | Result |\n`;
+            body += `|-------|-----------|--------|\n`;
+            body += `| Overall | ≥ ${summary.overallThreshold}% | ${summary.overallPass ? '✅ PASS' : '❌ FAIL'} |\n`;
+            body += `| Per-module | per-module minimums | ${summary.modulePass ? '✅ PASS' : '❌ FAIL'} |\n`;
+
+            if (summary.regression) {
+              const reg = summary.regression;
+              body += `| Regression | ≤ ${summary.regressionThreshold}% drop | ${reg.pass ? '✅ PASS' : '❌ FAIL'} (${reg.currentPct}% vs ${reg.baselinePct}%) |\n`;
+            }
+
+            if (summary.failedChecks.length > 0) {
+              body += `\n### ❌ Failed Checks\n`;
+              for (const check of summary.failedChecks) {
+                body += `- ${check}\n`;
+              }
+            }
+
+            try {
+              const { data: existing } = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+              });
+
+              const existingComment = existing.find(c => c.body && c.body.startsWith('## Coverage Report'));
+
+              if (existingComment) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existingComment.id,
+                  body,
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body,
+                });
+              }
+            } catch (err) {
+              console.log('Could not post coverage comment (token may lack permissions):', err.message);
+            }
