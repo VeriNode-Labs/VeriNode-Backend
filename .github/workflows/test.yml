@@ -80,6 +80,20 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: verinode_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -89,8 +103,20 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Setup Database Schema
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d verinode_test < src/database/migrations/005_reputation_schema.sql
+        env:
+          PGPASSWORD: postgres
+
       - name: Run tests with coverage
         run: npx c8 --all --src src --exclude scripts --exclude tests --exclude node_modules --reporter lcov --reporter json --reporter text --report-dir coverage node scripts/run-tests.cjs
+        env:
+          TEST_DB_HOST: localhost
+          TEST_DB_PORT: 5432
+          TEST_DB_USER: postgres
+          TEST_DB_PASSWORD: postgres
+          TEST_DB_NAME: verinode_test
 
       - name: Download baseline from main (PR only)
         if: github.event_name == 'pull_request'
