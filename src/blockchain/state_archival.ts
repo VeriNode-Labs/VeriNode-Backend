@@ -1,6 +1,7 @@
 import { Database } from '../config/database';
 import { RpcClient } from './rpc_client';
 import { TransactionBuilder, BatchRenewalResult } from './transaction_builder';
+import { createLogger } from '../diagnostics/logger';
 import {
   ContractDataPointer,
   CriticalDataKey,
@@ -38,6 +39,7 @@ export class StateArchivalListener {
   private readonly pollIntervalMs: number;
   private readonly minRenewalGapMs: number;
   private readonly onMetric?: StateArchivalListenerOptions['onMetric'];
+  private log = createLogger('state_archival');
 
   constructor(
     private db: Database,
@@ -56,7 +58,9 @@ export class StateArchivalListener {
     this.running = true;
     this.timer = setInterval(() => {
       this.tick().catch((err) => {
-        console.error('[StateArchivalListener] tick failed:', err instanceof Error ? err.message : err);
+        this.log.error('tick failed', {
+          'error.message': err instanceof Error ? err.message : String(err),
+        });
       });
     }, this.pollIntervalMs);
     // Run an immediate tick on start rather than waiting a full interval,
@@ -124,9 +128,11 @@ export class StateArchivalListener {
     for (const row of watchlist) {
       const entry = await this.rpcClient.getLedgerEntry(row.contractId, row.dataKey);
       if ('code' in entry) {
-        console.warn(
-          `[StateArchivalListener] getLedgerEntry failed for ${row.contractId}:${row.dataKey} — ${entry.message}`,
-        );
+        this.log.warn('getLedgerEntry failed', {
+          'contract.id': row.contractId,
+          'data.key': row.dataKey,
+          'error.message': entry.message,
+        });
         continue;
       }
 
@@ -170,9 +176,10 @@ export class StateArchivalListener {
   /** Persists successful renewals back to the watchlist table. */
   private async applyRenewalResult(contractId: string, result: BatchRenewalResult): Promise<void> {
     if (!result.txResult.success || result.renewedPointers.length === 0) {
-      console.error(
-        `[StateArchivalListener] renewal failed for contract ${contractId} after ${result.attempts} attempt(s)`,
-      );
+      this.log.error('renewal failed', {
+        'contract.id': contractId,
+        attempts: result.attempts,
+      });
       return;
     }
 

@@ -1,4 +1,5 @@
 import { Pool, PoolClient, PoolConfig, QueryResult, QueryResultRow } from 'pg';
+import { createLogger } from '../diagnostics/logger';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -98,6 +99,7 @@ export class PriorityRouter {
   readonly oltpPool: Pool;
   readonly olapPool: Pool;
   private readonly spilloverWaitMs: number;
+  private log = createLogger('pool_isolation', { 'db.system': 'postgresql' });
   private readonly metrics: MetricsState = {
     queryTimeoutTotal: { oltp: 0, olap: 0 },
     durationSamplesMs: { oltp: [], olap: [] },
@@ -130,10 +132,10 @@ export class PriorityRouter {
     );
 
     this.oltpPool.on('error', (err) =>
-      console.error('[PriorityRouter] OLTP pool error:', err.message),
+      this.log.error('OLTP pool error', { 'pool.tier': 'oltp', 'error.message': err.message }),
     );
     this.olapPool.on('error', (err) =>
-      console.error('[PriorityRouter] OLAP pool error:', err.message),
+      this.log.error('OLAP pool error', { 'pool.tier': 'olap', 'error.message': err.message }),
     );
   }
 
@@ -258,9 +260,10 @@ export class PriorityRouter {
       // Spillover: release the pending OLTP client when it eventually arrives
       clientPromise.then((c) => c.release()).catch(() => {});
       this.metrics.spilloverTotal++;
-      console.warn(
-        `[PriorityRouter] OLTP connection wait exceeded ${this.spilloverWaitMs}ms; spilling to OLAP pool`,
-      );
+      this.log.warn('OLTP connection wait exceeded threshold; spilling to OLAP pool', {
+        'pool.tier': 'oltp',
+        'pool.spillover_wait_ms': this.spilloverWaitMs,
+      });
       return this._exec(this.olapPool, 'olap', text, params);
     }
 

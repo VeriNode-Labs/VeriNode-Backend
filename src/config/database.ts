@@ -1,4 +1,5 @@
 import { Pool, PoolConfig, QueryResult, QueryResultRow, PoolClient } from 'pg';
+import { createLogger } from '../diagnostics/logger';
 
 export interface DatabaseConfig {
   host: string;
@@ -42,6 +43,7 @@ export class Database {
   private onQueryComplete: QueryHandler | null = null;
   private totalQueries = 0;
   private totalErrors = 0;
+  private log = createLogger('database', { 'db.system': 'postgresql' });
 
   constructor(config: DatabaseConfig) {
     this.config = config;
@@ -61,7 +63,7 @@ export class Database {
     this.pool = new Pool(poolConfig);
 
     this.pool.on('error', (err: Error) => {
-      console.error('[Database] Unexpected pool error:', err.message);
+      this.log.error('Unexpected pool error', { 'error.message': err.message });
     });
 
     this.pool.on('connect', () => {
@@ -150,7 +152,7 @@ export class Database {
     try {
       await this.pool.query('CREATE EXTENSION IF NOT EXISTS pg_cron CASCADE');
     } catch {
-      console.warn('[Database] pg_cron extension not available — cron jobs will not be scheduled');
+      this.log.warn('pg_cron extension not available — cron jobs will not be scheduled');
     }
   }
 }
