@@ -8,6 +8,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as tls from 'tls';
 import type express from 'express';
+import { createLogger, type StructuredLogger } from '../diagnostics/logger';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_RENEW_BEFORE_DAYS = 30;
@@ -101,7 +102,7 @@ export interface TlsReloaderOptions {
 
 export interface EnvTlsBootstrapOptions {
   httpPort: number | string;
-  log?: Pick<Console, 'log' | 'warn' | 'error'>;
+  log?: Pick<Console, 'log' | 'warn' | 'error'> | StructuredLogger;
 }
 
 export class CertificateStore {
@@ -419,7 +420,7 @@ export async function createAcmeChallengeHandler(store: ChallengeStore): Promise
 
 export async function bootstrapTlsFromEnv(app: express.Express, options: EnvTlsBootstrapOptions): Promise<https.Server | null> {
   if (process.env.TLS_ACME_ENABLED !== 'true') return null;
-  const log = options.log ?? console;
+  const log = options.log ?? createLogger('acme_rotation', { 'tls.mode': 'acme' });
   const domains = readCsvEnv('TLS_DOMAINS');
   const email = process.env.TLS_ACME_EMAIL;
   const certPath = process.env.TLS_CERT_PATH;
@@ -452,10 +453,13 @@ export async function bootstrapTlsFromEnv(app: express.Express, options: EnvTlsB
     emergencyNotifyDays: intEnv('TLS_EMERGENCY_NOTIFY_DAYS', DEFAULT_EMERGENCY_NOTIFY_DAYS),
     checkIntervalMs: intEnv('TLS_RENEW_CHECK_INTERVAL_MS', DEFAULT_CHECK_INTERVAL_MS),
     onAlert: async (alert) => {
-      const line = `[tls-acme] ${alert.severity}: ${alert.message}`;
-      if (alert.severity === 'critical') log.error(line, alert.error ?? '');
-      else if (alert.severity === 'warning') log.warn(line, alert.error ?? '');
-      else log.log(line);
+      const attrs = {
+        'acme.alert.severity': alert.severity,
+        'acme.alert.error': alert.error ?? '',
+      };
+      if (alert.severity === 'critical') log.error(alert.message, attrs);
+      else if (alert.severity === 'warning') log.warn(alert.message, attrs);
+      else log.log(alert.message, attrs);
     },
   });
 
@@ -464,8 +468,8 @@ export async function bootstrapTlsFromEnv(app: express.Express, options: EnvTlsB
 
   const reloader = new TlsCertificateReloader({
     store,
-    onReload: () => log.log('[tls-acme] TLS certificate reloaded'),
-    onError: (err) => log.error('[tls-acme] TLS certificate reload failed', err),
+    onReload: () => log.log('TLS certificate reloaded'),
+    onError: (err) => log.error('TLS certificate reload failed', err),
   });
   const initialContext = reloader.loadInitial();
   reloader.start();
@@ -476,7 +480,7 @@ export async function bootstrapTlsFromEnv(app: express.Express, options: EnvTlsB
     SNICallback: reloader.SNICallback.bind(reloader),
     secureContext: initialContext,
   }, app);
-  server.listen(Number(tlsPort), () => log.log(`[tls-acme] HTTPS server running on port ${tlsPort}`));
+  server.listen(Number(tlsPort), () => log.log(`HTTPS server running on port ${tlsPort}`, { 'tls.port': Number(tlsPort) }));
 
   app.locals.tlsCertificateStore = store;
   app.locals.tlsCertificateReloader = reloader;

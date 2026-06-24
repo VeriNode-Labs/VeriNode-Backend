@@ -53,6 +53,7 @@ import {
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
 import { ExpressInstrumentation } from '@opentelemetry/instrumentation-express';
 import * as os from 'node:os';
+import { createLogger, setLoggerServiceName } from './logger';
 
 // ---------------------------------------------------------------------------
 // Defaults (can be overridden by env)
@@ -120,9 +121,13 @@ export class ErrorLoggingSpanProcessor implements SpanProcessor {
       const messages = (span.events ?? [])
         .map((e) => (e.name ?? '').toString())
         .join(',');
-      console.warn(
-        `[tracer.error] trace=${traceId} span=${spanId} name=${name} events=${messages}`,
-      );
+      log.warn('Span status ERROR', {
+        'trace_id': traceId,
+        'span_id': spanId,
+        'span.name': name,
+        'events': messages,
+        'code.filepath': 'src/diagnostics/tracer.ts',
+      });
     }
   }
 
@@ -156,6 +161,7 @@ export interface TraceConfig {
 let sdk: NodeSDK | null = null;
 let queueProcessor: QueueDepthSpanProcessor | null = null;
 let initialized = false;
+const log = createLogger('tracer');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -249,7 +255,7 @@ export function initTracing(options: InitOptions = {}): TraceConfig | null {
   // before importing the module to skip SDK startup entirely.
   if (process.env.OTEL_SDK_DISABLED === 'true' || options.disabled === true) {
     if (!options.silent) {
-      console.log('[tracer] OTEL_SDK_DISABLED=true — skipping initializer');
+      log.info('OTEL_SDK_DISABLED=true — skipping initializer');
     }
     initialized = true; // mark so subsequent calls are a no-op
     return getTraceConfig();
@@ -282,17 +288,20 @@ export function initTracing(options: InitOptions = {}): TraceConfig | null {
 
     sdk.start();
     initialized = true;
+    setLoggerServiceName(serviceName);
 
     if (!options.silent) {
-      console.log(
-        `[tracer] OpenTelemetry initialized service=${serviceName} ` +
-          `endpoint=${endpoint} sampler=${samplerRatio}`,
-      );
+      log.info('OpenTelemetry initialized', {
+        'service.name': serviceName,
+        'exporter.endpoint': endpoint,
+        'sampler.ratio': samplerRatio,
+      });
     }
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
     if (!options.silent) {
-      console.warn('[tracer] Failed to initialize OpenTelemetry SDK:', msg);
+      log.warn('Failed to initialize OpenTelemetry SDK', {
+        'error.message': err instanceof Error ? err.message : String(err),
+      });
     }
     sdk = null;
     queueProcessor = null;
@@ -317,7 +326,9 @@ export async function shutdownTracing(): Promise<void> {
     await sdk.shutdown();
   } catch (err) {
     if (process.env.OTEL_DEBUG === 'true') {
-      console.warn('[tracer] shutdown error:', err);
+      log.warn('shutdown error', {
+        'error.message': err instanceof Error ? err.message : String(err),
+      });
     }
   } finally {
     sdk = null;

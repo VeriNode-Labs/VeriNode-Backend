@@ -6,6 +6,30 @@
 // TypeScript; we try the compiled CJS output first and fall back to a
 // ts-node runtime compile when dist/ is not present (typical of dev).
 
+let log = null;
+const loggerPaths = [
+  () => require('./dist/diagnostics/logger'),
+  () => {
+    require('ts-node').register({ transpileOnly: true, project: './tsconfig.json' });
+    return require('./src/diagnostics/logger');
+  },
+];
+for (const load of loggerPaths) {
+  try {
+    log = load();
+    break;
+  } catch (err) {
+    // try next path
+  }
+}
+// The logger module registers itself on global.__verinode_logger.
+// Fall back to a module-level console wrapper when the logger is unavailable.
+if (!log) {
+  log = { createLogger: () => console, getDefaultLogger: () => console };
+}
+
+const indexLog = log.getDefaultLogger();
+
 (() => {
   let tracing = null;
   const tryPaths = [
@@ -26,7 +50,7 @@
   if (tracing && typeof tracing.initTracing === 'function') {
     tracing.initTracing();
   } else {
-    console.warn('[index] OpenTelemetry tracer not loaded; running without tracing');
+    indexLog.warn('OpenTelemetry tracer not loaded; running without tracing');
   }
   // expose globally so legacy CJS modules can opt in via global.__verinode_tracing
   global.__verinode_tracing = tracing;
@@ -166,7 +190,7 @@ app.post('/internal/archival/renew/:contractId', express.json(), async (req, res
 });
 
 async function startServer() {
-  const httpServer = app.listen(port, () => console.log(`Server running on port ${port}`));
+  const httpServer = app.listen(port, () => indexLog.info('Server running', { port }));
   try {
     let tlsBootstrap = null;
     const tryPaths = [
@@ -189,7 +213,7 @@ async function startServer() {
     }
   } catch (err) {
     httpServer.close();
-    console.error('[index] TLS ACME bootstrap failed', err);
+    indexLog.error('TLS ACME bootstrap failed', { 'error.message': err instanceof Error ? err.message : String(err) });
     process.exitCode = 1;
   }
 }
@@ -200,7 +224,7 @@ if (require.main === module) {
     mtlsManager.startRotationWatch();
     const server = https.createServer(mtlsManager.serverOptions(), app);
     server.on('tlsClientError', () => mtlsManager.recordHandshakeFailure());
-    server.listen(port, () => console.log(`mTLS server running on port ${port}`));
+    server.listen(port, () => indexLog.info('mTLS server running', { port }));
   } else {
     void startServer();
   }

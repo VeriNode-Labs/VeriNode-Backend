@@ -251,10 +251,17 @@ async function main(): Promise<void> {
     const err = new ErrorLoggingSpanProcessor();
     err.onStart({} as any, {} as any);
     err.onEnd({} as any); // root span with no status — should be a no-op
-    // Now feed a fake readable span with status=ERROR to verify the console.warn path.
-    const origWarn = console.warn;
-    let sawWarn = false;
-    console.warn = () => { sawWarn = true; };
+    // Now feed a fake readable span with status=ERROR to verify the structured
+    // log path. The ErrorLoggingSpanProcessor now emits through the structured
+    // logger which writes a JSON line to stdout.
+    const origWrite = process.stdout.write;
+    let sawLog = false;
+    process.stdout.write = (chunk: unknown) => {
+      if (typeof chunk === 'string' && chunk.includes('"severity_number":13') && chunk.includes('fake-err')) {
+        sawLog = true;
+      }
+      return true;
+    };
     try {
       const fakeReadable: ReadableSpan = {
         name: 'fake-err',
@@ -272,9 +279,9 @@ async function main(): Promise<void> {
       } as unknown as ReadableSpan;
       err.onEnd(fakeReadable);
     } finally {
-      console.warn = origWarn;
+      process.stdout.write = origWrite;
     }
-    assert(sawWarn, 'ErrorLoggingSpanProcessor emits console.warn on ERROR spans');
+    assert(sawLog, 'ErrorLoggingSpanProcessor emits structured JSON log on ERROR spans');
     await err.forceFlush();
     await err.shutdown();
   }
