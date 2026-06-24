@@ -1,9 +1,59 @@
 /**
  * Configuration manager tests
  */
+declare global {
+  function describe(name: string, fn: () => void): void;
+  function it(name: string, fn: () => void | Promise<void>): void;
+  function before(fn: () => void | Promise<void>): void;
+  function after(fn: () => void | Promise<void>): void;
+}
+
+if (typeof (global as any).describe === 'undefined') {
+  const tests: Array<{ name: string; fn: () => any }> = [];
+  let beforeFn: (() => any) | null = null;
+  let afterFn: (() => any) | null = null;
+
+  (global as any).describe = (name: string, fn: () => void) => {
+    console.log(`Running Suite: ${name}`);
+    fn();
+    setTimeout(async () => {
+      try {
+        if (beforeFn) await beforeFn();
+        for (const test of tests) {
+          console.log(`  Running Test: ${test.name}`);
+          await test.fn();
+          console.log(`  ✓ ${test.name}`);
+        }
+        if (afterFn) await afterFn();
+        console.log('\nAll configuration tests passed!');
+        process.exit(0);
+      } catch (err: any) {
+        console.error(`\nTest failed: ${err.message}`);
+        console.error(err.stack);
+        if (afterFn) {
+          try {
+            await afterFn();
+          } catch {}
+        }
+        process.exit(1);
+      }
+    }, 0);
+  };
+  (global as any).before = (fn: () => any) => {
+    beforeFn = fn;
+  };
+  (global as any).after = (fn: () => any) => {
+    afterFn = fn;
+  };
+  (global as any).it = (name: string, fn: () => any) => {
+    tests.push({ name, fn });
+  };
+}
+
 import * as assert from 'assert';
 import * as path from 'path';
 import { initConfig, getConfig, getConfigValue, onConfigChange, offConfigChange, onChangePath, reloadConfig, validateConfig } from '../src/config';
+
 
 const TEST_CONFIG_PATH = path.join(__dirname, 'test-config.json');
 
