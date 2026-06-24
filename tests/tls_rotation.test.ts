@@ -14,6 +14,19 @@ import {
   TlsCertificateReloader,
 } from '../src/tls/acme_rotation';
 
+if (process.platform === 'win32') {
+  const gitPaths = [
+    'C:\\Program Files\\Git\\usr\\bin',
+    'C:\\Program Files\\Git\\mingw64\\bin'
+  ];
+  for (const gitPath of gitPaths) {
+    if (fs.existsSync(gitPath)) {
+      process.env.PATH = `${gitPath};${process.env.PATH}`;
+      break;
+    }
+  }
+}
+
 class StaticIssuer implements AcmeIssuer {
   public calls = 0;
 

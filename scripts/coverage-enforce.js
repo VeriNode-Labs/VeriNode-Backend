@@ -68,9 +68,10 @@ function getModuleName(filePath) {
 }
 
 function shouldInclude(filePath) {
-  if (filePath.includes('node_modules')) return false;
-  if (!filePath.includes('/src/')) return false;
-  if (INTERFACE_ONLY_FILES.some((f) => filePath.endsWith(f))) return false;
+  const normalized = filePath.replace(/\\/g, '/');
+  if (normalized.includes('node_modules')) return false;
+  if (!normalized.includes('/src/')) return false;
+  if (INTERFACE_ONLY_FILES.some((f) => normalized.endsWith(f))) return false;
   return true;
 }
 

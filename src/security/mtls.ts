@@ -1,6 +1,7 @@
 import { X509Certificate, createHash } from 'node:crypto';
 import { readFileSync, watch, FSWatcher } from 'node:fs';
 import * as tls from 'node:tls';
+import { getConfigManager } from '../config/manager';
 import { createLogger } from '../diagnostics/logger';
 
 const DEFAULT_CERT_MAX_VALIDITY_MS = 24 * 60 * 60 * 1000;
@@ -273,6 +274,38 @@ export class MtlsCertificateManager {
 
 }
 
+/**
+ * Read mTLS configuration from the centralized config system,
+ * falling back to environment variables and defaults.
+ */
+export function mtlsConfigFromCentralConfig(): MtlsConfig {
+  let mtlsCfg: any = {};
+  try {
+    const mgr = getConfigManager();
+    mtlsCfg = mgr.getIn('mtls') ?? {};
+  } catch {
+    return mtlsConfigFromEnv();
+  }
+  return {
+    enabled: mtlsCfg.enabled ?? false,
+    certFile: mtlsCfg.certFile,
+    keyFile: mtlsCfg.keyFile,
+    caFile: mtlsCfg.caFile,
+    trustDomain: mtlsCfg.trustDomain ?? 'cluster.local',
+    allowedSpiffeIds: mtlsCfg.allowedSpiffeIds ?? [],
+    certMaxValidityMs: mtlsCfg.certMaxValidityMs ?? DEFAULT_CERT_MAX_VALIDITY_MS,
+    minSecondsUntilExpiry: mtlsCfg.minSecondsUntilExpiry ?? DEFAULT_MIN_SECONDS_UNTIL_EXPIRY,
+    reloadPollMs: mtlsCfg.reloadPollMs ?? DEFAULT_RELOAD_POLL_MS,
+  };
+}
+
 export function createMtlsManagerFromEnv(env: NodeJS.ProcessEnv = process.env): MtlsCertificateManager {
   return new MtlsCertificateManager(mtlsConfigFromEnv(env));
+}
+
+/**
+ * Create an mTLS certificate manager using centralized config with env fallback.
+ */
+export function createMtlsManager(): MtlsCertificateManager {
+  return new MtlsCertificateManager(mtlsConfigFromCentralConfig());
 }

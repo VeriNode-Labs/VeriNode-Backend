@@ -1,0 +1,15 @@
+{
+  "db": {
+    "host": "demo-db.example.com",
+    "port": 5432,
+    "user": "demo_user",
+    "password": "demo_pass",
+    "database": "verinode_demo",
+    "maxConnections": 25
+  },
+  "app": {
+    "port": 8080,
+    "environment": "development",
+    "logLevel": "debug"
+  }
+}
