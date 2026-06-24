@@ -1,69 +1,21 @@
 // VeriNode Backend entrypoint.
 //
-// Bootstraps the OpenTelemetry tracer (see ./src/diagnostics/tracer.ts)
-// so every downstream module that imports @opentelemetry/api inherits
-// the configured global TracerProvider. The tracer module is written in
-// TypeScript; we try the compiled CJS output first and fall back to a
-// ts-node runtime compile when dist/ is not present (typical of dev).
-
-(() => {
-  let tracing = null;
-  const tryPaths = [
-    () => require('./dist/diagnostics/tracer'),
-    () => {
-      require('ts-node').register({ transpileOnly: true, project: './tsconfig.json' });
-      return require('./src/diagnostics/tracer');
-    },
-  ];
-  for (const load of tryPaths) {
-    try {
-      tracing = load();
-      break;
-    } catch (err) {
-      // try next path
-    }
-  }
-  if (tracing && typeof tracing.initTracing === 'function') {
-    tracing.initTracing();
-  } else {
-    console.warn('[index] OpenTelemetry tracer not loaded; running without tracing');
-  }
-  // expose globally so legacy CJS modules can opt in via global.__verinode_tracing
-  global.__verinode_tracing = tracing;
-})();
+// Bootstraps the centralized configuration system first, then initializes
+// the OpenTelemetry tracer (see ./src/diagnostics/tracer.ts) so every
+// downstream module that imports @opentelemetry/api inherits the configured
+// global TracerProvider. The tracer module is written in TypeScript; we try
+// the compiled CJS output first and fall back to a ts-node runtime compile
+// when dist/ is not present (typical of dev).
 
 const express = require('express');
-const https = require('https');
-const app = express();
 
-function getDeadLetterQueue() {
-  return app.locals.deadLetterQueue || global.__verinode_dlq || null;
-}
-
-function getDeadLetterRetryHandler() {
-  return app.locals.deadLetterRetryHandler || global.__verinode_dlq_retry_handler || null;
-}
-
-function parseListQuery(query) {
-  const params = {};
-  if (typeof query.messageType === 'string' && query.messageType.trim()) {
-    params.messageType = query.messageType.trim();
-  }
-  if (typeof query.limit === 'string') {
-    params.limit = Number.parseInt(query.limit, 10);
-  }
-  if (typeof query.offset === 'string') {
-    params.offset = Number.parseInt(query.offset, 10);
-  }
-  return params;
-}
-
-function loadMtlsModule() {
+// ---- Module loader for TypeScript sources ----
+function loadTsModule(modulePath) {
   const tryPaths = [
-    () => require('./dist/security/mtls'),
+    () => require('./dist/' + modulePath),
     () => {
       require('ts-node').register({ transpileOnly: true, project: './tsconfig.json' });
-      return require('./src/security/mtls');
+      return require('./src/' + modulePath);
     },
   ];
   for (const load of tryPaths) {
@@ -76,116 +28,165 @@ function loadMtlsModule() {
   return null;
 }
 
-const mtls = loadMtlsModule();
-if ((process.env.VERINODE_MTLS_ENABLED === 'true' || process.env.VERINODE_MTLS_ENABLED === '1') && !mtls) {
-  throw new Error('VERINODE_MTLS_ENABLED is set but the mTLS module could not be loaded');
-}
-const mtlsManager = mtls && typeof mtls.createMtlsManagerFromEnv === 'function'
-  ? mtls.createMtlsManagerFromEnv()
-  : null;
-global.__verinode_mtls = mtlsManager;
+// ---- Config ----
+const configModule = loadTsModule('config/index');
+const { initConfig, getConfig, getConfigValue, onConfigChange, reloadConfig } = configModule || {};
 
-app.use((req, res, next) => {
-  if (!mtlsManager || !mtlsManager.current) return next();
-  if (!req.client.authorized) {
-    mtlsManager.recordHandshakeFailure();
-    return res.status(401).json({ error: 'mTLS client certificate required' });
-  }
-  const peerCert = req.socket.getPeerCertificate();
-  if (!mtls.validatePeerCertificate(peerCert, mtlsManager.config ?? {
-    trustDomain: process.env.SPIFFE_TRUST_DOMAIN || 'cluster.local',
-    allowedSpiffeIds: (process.env.SPIFFE_ALLOWED_IDS || '').split(',').map((v) => v.trim()).filter(Boolean),
-  })) {
-    mtlsManager.recordInvalidPeerIdentity();
-    return res.status(403).json({ error: 'mTLS peer SPIFFE identity is not allowed' });
-  }
-  return next();
-});
+// ---- Express app ----
+const app = express();
 
-app.get('/', (req, res) => res.send('VeriNode API is running'));
+async function bootstrap() {
+  // 1. Initialize centralized configuration
+  if (initConfig) {
+    await initConfig({
+      configFile: process.env.CONFIG_FILE || './config.json',
+      watchFiles: [process.env.CONFIG_FILE || './config.json'],
+    });
+    console.log('[index] Config initialized');
 
-// /debug/traces/config — required by issue #15. Returns current sampler
-// configuration, exporter endpoint, and span queue depth so Jaeger / Tempo
-// operators can inspect runtime state.
-app.get('/debug/traces/config', (req, res) => {
-  const t = global.__verinode_tracing;
-  if (!t || typeof t.getTraceConfig !== 'function') {
-    return res.status(503).json({ error: 'tracing not initialised' });
-  }
-  res.json(t.getTraceConfig());
-});
-
-// /health/pools — dual-pool connection stats for operational dashboards.
-// Returns 503 when the PriorityRouter has not been initialised yet.
-app.get('/health/pools', (req, res) => {
-  const pools = global.__verinode_pools;
-  if (!pools || typeof pools.getPoolHealth !== 'function') {
-    return res.status(503).json({ error: 'pool router not initialised' });
-  }
-  res.json(pools.getPoolHealth());
-});
-
-// /metrics — Prometheus text-format scrape endpoint.
-app.get('/metrics', async (req, res) => {
-  const chunks = [];
-  const pools = global.__verinode_pools;
-  if (pools && typeof pools.prometheusMetrics === 'function') {
-    chunks.push(pools.prometheusMetrics());
-  }
-  const dlq = getDeadLetterQueue();
-  if (dlq && typeof dlq.prometheusMetrics === 'function') {
-    chunks.push(await dlq.prometheusMetrics());
-  }
-  if (mtlsManager && typeof mtlsManager.prometheusMetrics === 'function') {
-    chunks.push(mtlsManager.prometheusMetrics());
-  }
-  if (chunks.length === 0) {
-    return res.status(503).type('text/plain').send('# metrics sources not initialised\n');
-  }
-  res.type('text/plain; version=0.0.4; charset=utf-8').send(chunks.join('\n'));
-});
-
-const port = process.env.PORT || 3000;
-
-// POST /internal/archival/renew/:contractId — required by issue #20.
-// Triggers an immediate TTL extension for a specific contract's critical
-// keys, bypassing the normal 60s poll/threshold logic. Returns the new
-// TTL and transaction hash. The listener instance is attached at
-// app.locals.archivalListener during server bootstrap (see src/blockchain/state_archival.ts).
-app.post('/internal/archival/renew/:contractId', express.json(), async (req, res) => {
-  const listener = app.locals.archivalListener;
-  if (!listener) {
-    return res.status(503).json({ error: 'archival listener not initialised' });
-  }
-  try {
-    const result = await listener.renewNow(req.params.contractId);
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : 'renewal failed' });
-  }
-});
-
-async function startServer() {
-  const httpServer = app.listen(port, () => console.log(`Server running on port ${port}`));
-  try {
-    let tlsBootstrap = null;
-    const tryPaths = [
-      () => require('./dist/tls/acme_rotation'),
-      () => {
-        require('ts-node').register({ transpileOnly: true, project: './tsconfig.json' });
-        return require('./src/tls/acme_rotation');
-      },
-    ];
-    for (const load of tryPaths) {
-      try {
-        tlsBootstrap = load();
-        break;
-      } catch (err) {
-        // try next path
+    // Handle SIGHUP for hot reload
+    process.on('SIGHUP', async () => {
+      if (reloadConfig) {
+        console.log('[index] Reloading configuration...');
+        await reloadConfig();
+        console.log('[index] Configuration reloaded');
       }
+    });
+  } else {
+    console.warn('[index] Config module not loaded; running with env defaults');
+  }
+
+  // 2. Initialize tracing
+  const tracing = loadTsModule('diagnostics/tracer');
+  if (tracing && typeof tracing.initTracingFromConfig === 'function') {
+    const otelCfg = getConfigValue ? getConfigValue('telemetry.otel') : null;
+    if (otelCfg && otelCfg.enabled !== false) {
+      tracing.initTracingFromConfig(otelCfg);
+    } else {
+      tracing.initTracing();
     }
-    if (tlsBootstrap && typeof tlsBootstrap.bootstrapTlsFromEnv === 'function') {
-      await tlsBootstrap.bootstrapTlsFromEnv(app, { httpPort: port });
+  } else if (tracing && typeof tracing.initTracing === 'function') {
+    tracing.initTracing();
+  } else {
+    console.warn('[index] OpenTelemetry tracer not loaded; running without tracing');
+  }
+  global.__verinode_tracing = tracing;
+
+  // 3. Set up Express middleware
+  app.use(express.json());
+
+  // 4. mTLS middleware
+  const mtlsModule = loadTsModule('security/mtls');
+  const mtlsManager = mtlsModule && typeof mtlsModule.createMtlsManager === 'function'
+    ? mtlsModule.createMtlsManager()
+    : (mtlsModule && typeof mtlsModule.createMtlsManagerFromEnv === 'function'
+      ? mtlsModule.createMtlsManagerFromEnv()
+      : null);
+  global.__verinode_mtls = mtlsManager;
+
+  if (mtlsManager && mtlsManager.current) {
+    console.log('[index] mTLS enabled');
+  }
+
+  app.use((req, res, next) => {
+    if (!mtlsManager || !mtlsManager.current) return next();
+    if (!req.client.authorized) {
+      mtlsManager.recordHandshakeFailure();
+      return res.status(401).json({ error: 'mTLS client certificate required' });
+    }
+    const peerCert = req.socket.getPeerCertificate();
+    const mtlsConfig = mtlsManager.config || {};
+    if (!mtlsModule.validatePeerCertificate(peerCert, {
+      trustDomain: mtlsConfig.trustDomain || 'cluster.local',
+      allowedSpiffeIds: mtlsConfig.allowedSpiffeIds || [],
+    })) {
+      mtlsManager.recordInvalidPeerIdentity();
+      return res.status(403).json({ error: 'mTLS peer SPIFFE identity is not allowed' });
+    }
+    return next();
+  });
+
+  // 5. Routes
+  app.get('/', (req, res) => res.send('VeriNode API is running'));
+
+  // /debug/traces/config — required by issue #15
+  app.get('/debug/traces/config', (req, res) => {
+    const t = global.__verinode_tracing;
+    if (!t || typeof t.getTraceConfig !== 'function') {
+      return res.status(503).json({ error: 'tracing not initialised' });
+    }
+    res.json(t.getTraceConfig());
+  });
+
+  // /health/pools — dual-pool connection stats
+  app.get('/health/pools', (req, res) => {
+    const pools = global.__verinode_pools;
+    if (!pools || typeof pools.getPoolHealth !== 'function') {
+      return res.status(503).json({ error: 'pool router not initialised' });
+    }
+    res.json(pools.getPoolHealth());
+  });
+
+  // /metrics — Prometheus text-format scrape endpoint
+  app.get('/metrics', async (req, res) => {
+    const chunks = [];
+    const pools = global.__verinode_pools;
+    if (pools && typeof pools.prometheusMetrics === 'function') {
+      chunks.push(pools.prometheusMetrics());
+    }
+    const dlq = getDeadLetterQueue();
+    if (dlq && typeof dlq.prometheusMetrics === 'function') {
+      chunks.push(await dlq.prometheusMetrics());
+    }
+    if (mtlsManager && typeof mtlsManager.prometheusMetrics === 'function') {
+      chunks.push(mtlsManager.prometheusMetrics());
+    }
+    if (chunks.length === 0) {
+      return res.status(503).type('text/plain').send('# metrics sources not initialised\n');
+    }
+    res.type('text/plain; version=0.0.4; charset=utf-8').send(chunks.join('\n'));
+  });
+
+  // POST /internal/archival/renew/:contractId — required by issue #20
+  app.post('/internal/archival/renew/:contractId', express.json(), async (req, res) => {
+    const listener = app.locals.archivalListener;
+    if (!listener) {
+      return res.status(503).json({ error: 'archival listener not initialised' });
+    }
+    try {
+      const result = await listener.renewNow(req.params.contractId);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'renewal failed' });
+    }
+  });
+
+  // 6. Start server
+  const port = getConfigValue ? (getConfigValue('app.port') || 3000) : (process.env.PORT || 3000);
+
+  if (mtlsManager && mtlsManager.config && mtlsManager.config.enabled) {
+    mtlsManager.startRotationWatch();
+    const https = require('https');
+    const server = https.createServer(mtlsManager.serverOptions(), app);
+    server.on('tlsClientError', () => mtlsManager.recordHandshakeFailure());
+    server.listen(port, () => console.log(`mTLS server running on port ${port}`));
+  } else {
+    const httpServer = app.listen(port, () => console.log(`Server running on port ${port}`));
+    await bootstrapTls(httpServer, port);
+  }
+}
+
+function getDeadLetterQueue() {
+  return app.locals.deadLetterQueue || global.__verinode_dlq || null;
+}
+
+async function bootstrapTls(httpServer, httpPort) {
+  try {
+    const tlsBootstrap = loadTsModule('tls/acme_rotation');
+    if (tlsBootstrap && typeof tlsBootstrap.bootstrapTlsFromConfig === 'function') {
+      await tlsBootstrap.bootstrapTlsFromConfig(app, { httpPort });
+    } else if (tlsBootstrap && typeof tlsBootstrap.bootstrapTlsFromEnv === 'function') {
+      await tlsBootstrap.bootstrapTlsFromEnv(app, { httpPort });
     }
   } catch (err) {
     httpServer.close();
@@ -194,16 +195,11 @@ async function startServer() {
   }
 }
 
-
 if (require.main === module) {
-  if (mtlsManager && mtlsManager.config.enabled) {
-    mtlsManager.startRotationWatch();
-    const server = https.createServer(mtlsManager.serverOptions(), app);
-    server.on('tlsClientError', () => mtlsManager.recordHandshakeFailure());
-    server.listen(port, () => console.log(`mTLS server running on port ${port}`));
-  } else {
-    void startServer();
-  }
+  bootstrap().catch((err) => {
+    console.error('[index] Bootstrap failed', err);
+    process.exit(1);
+  });
 }
 
 module.exports = app;

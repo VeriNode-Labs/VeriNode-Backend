@@ -1,4 +1,5 @@
 import { Pool, PoolConfig, QueryResult, QueryResultRow, PoolClient } from 'pg';
+import { getConfigManager } from './manager';
 
 export interface DatabaseConfig {
   host: string;
@@ -21,17 +22,25 @@ export interface QueryMetrics {
 export type QueryHandler = (metrics: QueryMetrics) => void;
 
 /**
- * Convenience factory: creates a Database instance from environment variables.
- * Used by application bootstrap; tests should construct Database directly.
+ * Convenience factory: creates a Database instance from the centralized config
+ * with environment variable and default fallbacks. Used by application bootstrap;
+ * tests should construct Database directly.
  */
 export function createPool(overrides?: Partial<DatabaseConfig>): Database {
+  let dbCfg: any = {};
+  try {
+    const mgr = getConfigManager();
+    dbCfg = mgr.getIn('db') ?? {};
+  } catch {
+    // Config not initialized yet — fall through to env/defaults
+  }
   return new Database({
-    host: process.env.DB_HOST ?? 'localhost',
-    port: parseInt(process.env.DB_PORT ?? '5432', 10),
-    user: process.env.DB_USER ?? 'verinode',
-    password: process.env.DB_PASSWORD ?? '',
-    database: process.env.DB_NAME ?? 'verinode',
-    maxConnections: parseInt(process.env.DB_MAX_CONNECTIONS ?? '20', 10),
+    host: dbCfg.host ?? process.env.DB_HOST ?? 'localhost',
+    port: dbCfg.port ?? parseInt(process.env.DB_PORT ?? '5432', 10),
+    user: dbCfg.user ?? process.env.DB_USER ?? 'verinode',
+    password: dbCfg.password ?? process.env.DB_PASSWORD ?? '',
+    database: dbCfg.database ?? process.env.DB_NAME ?? 'verinode',
+    maxConnections: dbCfg.maxConnections ?? parseInt(process.env.DB_MAX_CONNECTIONS ?? '20', 10),
     ...overrides,
   });
 }

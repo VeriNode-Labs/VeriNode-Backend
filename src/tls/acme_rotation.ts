@@ -8,6 +8,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as tls from 'tls';
 import type express from 'express';
+import { getConfigManager } from '../config/manager';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_RENEW_BEFORE_DAYS = 30;
@@ -451,6 +452,90 @@ export async function bootstrapTlsFromEnv(app: express.Express, options: EnvTlsB
     renewBeforeDays: intEnv('TLS_RENEW_BEFORE_DAYS', DEFAULT_RENEW_BEFORE_DAYS),
     emergencyNotifyDays: intEnv('TLS_EMERGENCY_NOTIFY_DAYS', DEFAULT_EMERGENCY_NOTIFY_DAYS),
     checkIntervalMs: intEnv('TLS_RENEW_CHECK_INTERVAL_MS', DEFAULT_CHECK_INTERVAL_MS),
+    onAlert: async (alert) => {
+      const line = `[tls-acme] ${alert.severity}: ${alert.message}`;
+      if (alert.severity === 'critical') log.error(line, alert.error ?? '');
+      else if (alert.severity === 'warning') log.warn(line, alert.error ?? '');
+      else log.log(line);
+    },
+  });
+
+  await manager.checkOnce();
+  if (!(await store.exists())) throw new Error('TLS certificate unavailable after ACME bootstrap');
+
+  const reloader = new TlsCertificateReloader({
+    store,
+    onReload: () => log.log('[tls-acme] TLS certificate reloaded'),
+    onError: (err) => log.error('[tls-acme] TLS certificate reload failed', err),
+  });
+  const initialContext = reloader.loadInitial();
+  reloader.start();
+  manager.start();
+
+  const tlsPort = process.env.TLS_PORT ?? '3443';
+  const server = https.createServer({
+    SNICallback: reloader.SNICallback.bind(reloader),
+    secureContext: initialContext,
+  }, app);
+  server.listen(Number(tlsPort), () => log.log(`[tls-acme] HTTPS server running on port ${tlsPort}`));
+
+  app.locals.tlsCertificateStore = store;
+  app.locals.tlsCertificateReloader = reloader;
+  app.locals.tlsRenewalManager = manager;
+  app.locals.tlsServer = server;
+  app.locals.httpPort = options.httpPort;
+  return server;
+}
+
+/**
+ * Bootstrap TLS/ACME from the centralized config system,
+ * falling back to environment variables and defaults.
+ */
+export async function bootstrapTlsFromConfig(app: express.Express, options: EnvTlsBootstrapOptions): Promise<https.Server | null> {
+  let tlsCfg: any = {};
+  try {
+    const mgr = getConfigManager();
+    tlsCfg = mgr.getIn('tls') ?? {};
+  } catch {
+    return bootstrapTlsFromEnv(app, options);
+  }
+
+  const acmeCfg = tlsCfg.acme ?? {};
+  if (acmeCfg.enabled !== true) return null;
+
+  const log = options.log ?? console;
+  const domains: string[] = acmeCfg.domains ?? [];
+  const email: string = acmeCfg.email ?? '';
+  const certPath: string = tlsCfg.certPath ?? '';
+  const keyPath: string = tlsCfg.keyPath ?? '';
+
+  if (domains.length === 0 || !email || !certPath || !keyPath) {
+    throw new Error('ACME TLS requires domains, email, certPath, and keyPath');
+  }
+
+  const webroot = tlsCfg.webroot ?? path.join(os.tmpdir(), 'verinode-acme');
+  const challengeStore = new FileChallengeStore({ webroot });
+  app.get('/.well-known/acme-challenge/:token', await createAcmeChallengeHandler(challengeStore));
+
+  const store = new CertificateStore({
+    certPath,
+    keyPath,
+    chainPath: tlsCfg.chainPath,
+  });
+  const issuer = new AcmeClientIssuer({
+    directoryUrl: acmeCfg.directoryUrl ?? 'https://acme-v02.api.letsencrypt.org/directory',
+    accountKeyPath: process.env.TLS_ACME_ACCOUNT_KEY_PATH ?? path.join(path.dirname(keyPath), 'acme-account.key'),
+    challengeStore,
+    termsOfServiceAgreed: acmeCfg.termsOfServiceAgreed === true,
+  });
+  const manager = new AcmeRenewalManager({
+    domains,
+    email,
+    issuer,
+    store,
+    renewBeforeDays: acmeCfg.renewBeforeDays ?? 30,
+    emergencyNotifyDays: acmeCfg.emergencyNotifyDays ?? 7,
+    checkIntervalMs: acmeCfg.checkIntervalMs ?? 86400000,
     onAlert: async (alert) => {
       const line = `[tls-acme] ${alert.severity}: ${alert.message}`;
       if (alert.severity === 'critical') log.error(line, alert.error ?? '');
