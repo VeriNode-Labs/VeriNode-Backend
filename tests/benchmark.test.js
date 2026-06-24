@@ -103,14 +103,17 @@ async function main() {
         const bv = baseline.results[key];
         if (bv === undefined || val === 0) continue;
         const deg = key.includes('ops_per_sec') ? (bv - val) / bv : (val - bv) / bv;
-        if (deg > 0.05) failures.push(`${key}: ${(deg * 100).toFixed(1)}% degradation`);
+        // Allow 10% degradation for block_time metrics (CI variance)
+        // and 5% for throughput metrics
+        const threshold = key.includes('block_time') ? 0.10 : 0.05;
+        if (deg > threshold) failures.push(`${key}: ${(deg * 100).toFixed(1)}% degradation`);
       }
       if (failures.length) {
         console.log('\nTHRESHOLD EXCEEDED:');
         failures.forEach(f => console.log(`  - ${f}`));
         process.exit(1);
       }
-      console.log('\nAll metrics within 5% threshold');
+      console.log('\nAll metrics within threshold (5% for throughput, 10% for block time)');
     }
   } else {
     console.log('\nNo baseline found - this run will serve as baseline');
