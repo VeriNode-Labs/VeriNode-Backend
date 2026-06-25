@@ -25,6 +25,7 @@ const TEST_FILES = [
   'tests/notifications/slashingNotifier.test.ts',
   'tests/reputation/scoreService.test.ts',
   'tests/slashing_sequencer.test.ts',
+  'tests/staking/bondPool.test.ts',
   'tests/staking/slashing_sequencer.test.ts',
   'tests/tls_rotation.test.ts',
   'tests/uptime_queries.test.ts',
