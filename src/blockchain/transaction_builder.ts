@@ -1,10 +1,12 @@
-import { RpcClient, TransactionResult } from './rpc_client';
+import { RpcClient, TransactionResult, PreflightReport } from './rpc_client';
 import { ContractDataPointer, MAX_BATCH_TTL_ENTRIES } from '../contracts/verification_contract';
+import { createLogger } from '../diagnostics/logger';
 
 export interface ExtendFootprintTTLParams {
   pointers: ContractDataPointer[];
   /** New minimum TTL, in ledgers, applied to every entry in the batch. */
   extendToLedgers: number;
+  preflight?: PreflightReport;
 }
 
 export interface BatchRenewalResult {
@@ -14,7 +16,7 @@ export interface BatchRenewalResult {
 }
 
 /** Backoff schedule (ms) per spec: 1st retry 10s, 2nd 30s, 3rd (final) 90s. */
-const RETRY_DELAYS_MS = [10_000, 30_000, 90_000];
+const DEFAULT_RETRY_DELAYS_MS = [10_000, 30_000, 90_000];
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -27,14 +29,30 @@ function sleep(ms: number): Promise<void> {
  * giving up so a transient RPC hiccup doesn't let a critical key archive.
  */
 export class TransactionBuilder {
-  constructor(private rpcClient: RpcClient) {}
+  private log = createLogger('transaction_builder');
+  private retryDelays: number[];
+
+  constructor(private rpcClient: RpcClient, retryDelays?: number[]) {
+    this.retryDelays = retryDelays ?? DEFAULT_RETRY_DELAYS_MS;
+  }
 
   /** Encodes the batch into the (placeholder) XDR transaction envelope. */
   private encodeExtendFootprintTx(params: ExtendFootprintTTLParams): string {
     const keys = params.pointers.map((p) => `${p.contractId}:${p.dataKey}`);
-    return Buffer.from(
-      JSON.stringify({ op: 'ExtendFootprintTTL', keys, extendTo: params.extendToLedgers }),
-    ).toString('base64');
+    const txData: any = {
+      op: 'ExtendFootprintTTL',
+      keys,
+      extendTo: params.extendToLedgers,
+    };
+
+    if (params.preflight) {
+      txData.instructions = params.preflight.estimatedGas;
+      this.log.debug('Applying preflight gas estimate to transaction', {
+        estimatedGas: params.preflight.estimatedGas,
+      });
+    }
+
+    return Buffer.from(JSON.stringify(txData)).toString('base64');
   }
 
   async submitBatchRenewal(params: ExtendFootprintTTLParams): Promise<BatchRenewalResult> {
@@ -55,14 +73,14 @@ export class TransactionBuilder {
     let attempts = 0;
     let lastResult: TransactionResult = { hash: '', success: false };
 
-    for (let i = 0; i <= RETRY_DELAYS_MS.length; i++) {
+    for (let i = 0; i <= this.retryDelays.length; i++) {
       attempts++;
       lastResult = await this.rpcClient.sendTransaction(tx);
       if (lastResult.success) {
         return { txResult: lastResult, renewedPointers: params.pointers, attempts };
       }
-      if (i < RETRY_DELAYS_MS.length) {
-        await sleep(RETRY_DELAYS_MS[i]);
+      if (i < this.retryDelays.length) {
+        await sleep(this.retryDelays[i]);
       }
     }
 
