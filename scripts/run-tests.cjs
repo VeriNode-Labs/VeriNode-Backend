@@ -22,6 +22,7 @@ const TEST_FILES = [
   'tests/core/crypto/aggregate_sig.test.ts',
   'tests/dead_letter_queue.test.ts',
   'tests/mtls.test.ts',
+  'tests/notifications/slashingNotifier.test.ts',
   'tests/reputation/scoreService.test.ts',
   'tests/slashing_sequencer.test.ts',
   'tests/staking/slashing_sequencer.test.ts',
