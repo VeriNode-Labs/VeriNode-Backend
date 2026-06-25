@@ -73,7 +73,7 @@ async function main(): Promise<void> {
     const result = await client.sendTransaction('AAAA...');
     assert(result.success === false, 'sendTransaction returns error on network failure');
     assert(result.error?.code === -32000, 'network error code is -32000');
-    assert(result.error?.message.includes('network failure'), 'network error message propagated');
+    assert(!!result.error?.message.includes('network failure'), 'network error message propagated');
   }
 
   // ── sendTransaction: abort (timeout) ─────────────────────────────
@@ -156,6 +156,51 @@ async function main(): Promise<void> {
     const result = await client.getLedgerEntry('CTEST...', 'attestation_root');
     assert('code' in result, 'returns RpcError on fetch error');
     assert((result as RpcError).code === -32000, 'fetch error code is -32000');
+  }
+
+  // ── simulateTransaction: success ──────────────────────────────────
+  {
+    makeFetchMock(async () => ({
+      json: async () => ({
+        jsonrpc: '2.0',
+        id: '1',
+        result: {
+          latestLedger: '1000',
+          cost: { instructions: '100', read_bytes: '200', write_bytes: '300' },
+          results: [{ xdr: 'AAAA' }],
+        },
+      }),
+    }));
+
+    const client = new RpcClient({ endpoint: 'http://fake:8000', timeoutMs: 5000 });
+    const result = await client.simulateTransaction('AAAA...');
+    assert(result.latestLedger === '1000', 'simulateTransaction returns latestLedger');
+    assert(result.cost?.instructions === '100', 'returns cost');
+    assert(result.results?.[0].xdr === 'AAAA', 'returns results');
+  }
+
+  // ── simulateTransaction: remote error ─────────────────────────────
+  {
+    makeFetchMock(async () => ({
+      json: async () => ({
+        jsonrpc: '2.0',
+        id: '1',
+        error: { code: -32600, message: 'Invalid request' },
+      }),
+    }));
+
+    const client = new RpcClient({ endpoint: 'http://fake:8000', timeoutMs: 5000 });
+    const result = await client.simulateTransaction('AAAA...');
+    assert(result.error?.code === -32600, 'simulateTransaction returns error on remote failure');
+  }
+
+  // ── simulateTransaction: fetch throws ─────────────────────────────
+  {
+    makeFetchMock(async () => { throw new Error('network error'); });
+
+    const client = new RpcClient({ endpoint: 'http://fake:8000', timeoutMs: 5000 });
+    const result = await client.simulateTransaction('AAAA...');
+    assert(result.error?.code === -32000, 'simulateTransaction returns error on fetch failure');
   }
 
   restoreFetch();

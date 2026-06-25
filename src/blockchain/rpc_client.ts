@@ -23,6 +23,35 @@ export interface LedgerEntryData {
   lastModifiedLedgerSeq: number;
 }
 
+export interface SimulateTransactionResponse {
+  results?: Array<{
+    auth?: string[];
+    xdr?: string;
+  }>;
+  cost?: {
+    instructions: string;
+    read_bytes: string;
+    write_bytes: string;
+  };
+  latestLedger: string;
+  error?: RpcError;
+}
+
+export interface ContractOperation {
+  contractId: string;
+  functionName: string;
+  args: any[];
+  xdr?: string; // Pre-encoded XDR if available
+}
+
+export interface PreflightReport {
+  instructions: number;
+  writeBytes: number;
+  estimatedGas: number;
+  simulationDurationMs: number;
+  storageKeysAccessed: string[];
+}
+
 export class RpcClient {
   private config: RpcClientConfig;
 
@@ -55,6 +84,36 @@ export class RpcClient {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown RPC error';
       return { hash: '', success: false, error: { code: -32000, message } };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async simulateTransaction(tx: string): Promise<SimulateTransactionResponse> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs);
+
+    try {
+      const response = await fetch(this.config.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: crypto.randomUUID(),
+          method: 'simulateTransaction',
+          params: { transaction: tx },
+        }),
+        signal: controller.signal,
+      });
+
+      const data: any = await response.json();
+      if (data.error) {
+        return { latestLedger: '0', error: data.error as RpcError };
+      }
+      return data.result as SimulateTransactionResponse;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown RPC error';
+      return { latestLedger: '0', error: { code: -32000, message } };
     } finally {
       clearTimeout(timeout);
     }
