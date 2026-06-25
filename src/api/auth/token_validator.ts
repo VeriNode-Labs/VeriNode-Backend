@@ -21,7 +21,7 @@ export function validateNodeToken(req: Request, res: Response, next: NextFunctio
         
         // For demonstration, assuming token verification logic is handled and we ensure 
         // the node identity claimed in the token matches the mTLS validated X-Node-ID.
-        req.user = {
+        (req as any).user = {
             nodeId: nodeIdHeader,
             // ...other token claims
         };
