@@ -56,7 +56,43 @@ async function bootstrap() {
     console.warn('[index] Config module not loaded; running with env defaults');
   }
 
+  // 1b. Start config drift auditor + expose debug endpoints
+  const driftModule = loadTsModule('config-drift/auditor');
+  const driftRoutesModule = loadTsModule('config-drift/routes');
+  if (driftModule && driftRoutesModule) {
+    try {
+      const { createConfigDriftAuditorFromEnv } = driftModule;
+      const { registerConfigDriftRoutes } = driftRoutesModule;
+
+      const auditor = createConfigDriftAuditorFromEnv({});
+      auditor.init().then(() => {
+        auditor.start();
+        registerConfigDriftRoutes(app, auditor);
+        console.log('[config-drift] Auditor started');
+      });
+
+
+      // best-effort shutdown hook
+      const shutdownHandler = () => {
+
+        try {
+          auditor.stop();
+        } catch {
+          // noop
+        }
+      };
+      process.once('SIGINT', shutdownHandler);
+      process.once('SIGTERM', shutdownHandler);
+
+    } catch (err) {
+      console.warn('[config-drift] Failed to start auditor:', (err && err.message) ? err.message : String(err));
+    }
+  } else {
+    console.warn('[config-drift] Drift modules not loaded');
+  }
+
   // 2. Initialize tracing
+
   const tracing = loadTsModule('diagnostics/tracer');
   if (tracing && typeof tracing.initTracingFromConfig === 'function') {
     const otelCfg = getConfigValue ? getConfigValue('telemetry.otel') : null;
