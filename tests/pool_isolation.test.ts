@@ -12,35 +12,56 @@ import {
 // =============================================================================
 
 class MockPool {
-  private readonly maxConns: number;
+  private maxConns: number;
   private readonly queryDelayMs: number;
   private activeConns = 0;
+  private waitingRequests = 0;
   private _peakTotal = 0;
+  readonly options: { max: number };
 
   constructor(maxConns: number, queryDelayMs: number) {
     this.maxConns = maxConns;
     this.queryDelayMs = queryDelayMs;
+    this.options = { max: maxConns };
   }
 
   async query<T extends QueryResultRow = any>(
     _text: string,
     _params?: any[],
   ): Promise<QueryResult<T>> {
+    if (this.activeConns >= this.maxConns) {
+      this.waitingRequests++;
+      try {
+        while (this.activeConns >= this.maxConns) {
+          await sleep(1);
+        }
+      } finally {
+        this.waitingRequests = Math.max(0, this.waitingRequests - 1);
+      }
+    }
+
     this.activeConns++;
     this._peakTotal = Math.max(this._peakTotal, this.activeConns);
     try {
       await sleep(this.queryDelayMs);
       return emptyResult<T>();
     } finally {
-      this.activeConns--;
+      this.activeConns = Math.max(0, this.activeConns - 1);
     }
   }
 
   async connect(): Promise<{ query: any; release: () => void }> {
-    // Block until a slot is free (simulates queue)
-    while (this.activeConns >= this.maxConns) {
-      await sleep(1);
+    if (this.activeConns >= this.maxConns) {
+      this.waitingRequests++;
+      try {
+        while (this.activeConns >= this.maxConns) {
+          await sleep(1);
+        }
+      } finally {
+        this.waitingRequests = Math.max(0, this.waitingRequests - 1);
+      }
     }
+
     this.activeConns++;
     this._peakTotal = Math.max(this._peakTotal, this.activeConns);
     return {
@@ -57,6 +78,11 @@ class MockPool {
     };
   }
 
+  setMaxConnections(maxConns: number): void {
+    this.maxConns = maxConns;
+    this.options.max = maxConns;
+  }
+
   end = async (): Promise<void> => {};
   on = (_event: string, _fn: any): this => this;
   removeListener = (_event: string, _fn: any): this => this;
@@ -68,7 +94,7 @@ class MockPool {
     return this._peakTotal;
   }
   get waitingCount(): number {
-    return Math.max(0, this.activeConns - this.maxConns);
+    return this.waitingRequests;
   }
 
   peakConnections(): number {
@@ -427,6 +453,57 @@ async function main(): Promise<void> {
       `  OLAP peak conns: ${olapPool.peakConnections()}` +
       `  OLTP peak conns: ${oltpPool.peakConnections()}`,
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Section 10: Adaptive scaling — OLTP pool expands on sustained queue pressure
+  // ---------------------------------------------------------------------------
+  console.log('  Adaptive scaling — health probe increases OLTP max connections');
+
+  {
+    const oltpPool = new MockPool(5, 100);
+    const olapPool = new MockPool(30, 1);
+    const router = new PriorityRouter(
+      {
+        ...DUMMY_CONFIG,
+        oltpMaxConnections: 5,
+        olapMaxConnections: 30,
+        spilloverWaitMs: 1000,
+        adaptiveScaling: {
+          enabled: true,
+          probeIntervalMs: 50,
+          cooldownMs: 100,
+          minConnections: 5,
+          maxConnections: 50,
+          adjustmentStep: 5,
+          latencyThresholdMs: 100,
+          waitThresholdMs: 50,
+          kp: 1.0,
+          ki: 0.1,
+          kd: 0.02,
+        },
+      },
+      makeMockFactory(oltpPool, olapPool),
+    );
+
+    const load = Array.from({ length: 20 }, () =>
+      router.query('INSERT INTO uptime_heartbeat VALUES ($1)', ['now'], { tier: 'oltp' }),
+    );
+
+    await sleep(200);
+    await sleep(200);
+    await Promise.all(load);
+
+    assert(
+      oltpPool.options.max >= 10,
+      `adaptive probe increased OLTP max connections to ${oltpPool.options.max}`,
+    );
+    assert(
+      router.prometheusMetrics().includes('pool_target_connections{pool="oltp"}'),
+      'prometheus metrics export adaptive target connections',
+    );
+
+    await router.close();
   }
 
   // ---------------------------------------------------------------------------
