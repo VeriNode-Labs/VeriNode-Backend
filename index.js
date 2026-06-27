@@ -56,7 +56,43 @@ async function bootstrap() {
     console.warn('[index] Config module not loaded; running with env defaults');
   }
 
+  // 1b. Start config drift auditor + expose debug endpoints
+  const driftModule = loadTsModule('config-drift/auditor');
+  const driftRoutesModule = loadTsModule('config-drift/routes');
+  if (driftModule && driftRoutesModule) {
+    try {
+      const { createConfigDriftAuditorFromEnv } = driftModule;
+      const { registerConfigDriftRoutes } = driftRoutesModule;
+
+      const auditor = createConfigDriftAuditorFromEnv({});
+      auditor.init().then(() => {
+        auditor.start();
+        registerConfigDriftRoutes(app, auditor);
+        console.log('[config-drift] Auditor started');
+      });
+
+
+      // best-effort shutdown hook
+      const shutdownHandler = () => {
+
+        try {
+          auditor.stop();
+        } catch {
+          // noop
+        }
+      };
+      process.once('SIGINT', shutdownHandler);
+      process.once('SIGTERM', shutdownHandler);
+
+    } catch (err) {
+      console.warn('[config-drift] Failed to start auditor:', (err && err.message) ? err.message : String(err));
+    }
+  } else {
+    console.warn('[config-drift] Drift modules not loaded');
+  }
+
   // 2. Initialize tracing
+
   const tracing = loadTsModule('diagnostics/tracer');
   if (tracing && typeof tracing.initTracingFromConfig === 'function') {
     const otelCfg = getConfigValue ? getConfigValue('telemetry.otel') : null;
@@ -74,6 +110,25 @@ async function bootstrap() {
 
   // 3. Set up Express middleware
   app.use(express.json());
+
+  const rateLimiterModule = loadTsModule('security/rate_limiter');
+  if (rateLimiterModule && typeof rateLimiterModule.createRateLimitingMiddleware === 'function') {
+    const rateLimitingMiddleware = rateLimiterModule.createRateLimitingMiddleware({
+      redisUrl: process.env.RATE_LIMIT_REDIS_URL,
+      endpointTiers: {
+        '/': 'free',
+        '/debug/traces/config': 'pro',
+        '/health/pools': 'enterprise',
+        '/metrics': 'free',
+        '/debug/config-drift': 'pro',
+        '/debug/config-drift/history': 'pro',
+        '/debug/config-drift/ui': 'pro',
+        '/internal/archival/renew/:contractId': 'enterprise',
+      },
+      defaultTier: 'free',
+    });
+    app.use(rateLimitingMiddleware);
+  }
 
   // 4. mTLS middleware
   const mtlsModule = loadTsModule('security/mtls');

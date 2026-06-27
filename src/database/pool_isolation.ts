@@ -18,12 +18,27 @@ export interface DualPoolConfig {
   idleTimeoutMs?: number;
   /** How long to wait for an OLTP connection before spilling to OLAP (ms). Default 100. */
   spilloverWaitMs?: number;
+  adaptiveScaling?: AdaptivePoolConfig;
 }
 
 export interface PoolStats {
   total: number;
   idle: number;
   waiting: number;
+}
+
+export interface AdaptivePoolConfig {
+  enabled?: boolean;
+  probeIntervalMs?: number;
+  minConnections?: number;
+  maxConnections?: number;
+  adjustmentStep?: number;
+  latencyThresholdMs?: number;
+  waitThresholdMs?: number;
+  cooldownMs?: number;
+  kp?: number;
+  ki?: number;
+  kd?: number;
 }
 
 export interface PoolHealthSnapshot {
@@ -92,13 +107,163 @@ interface MetricsState {
 }
 
 const SAMPLE_WINDOW = 200;
+function percentile(sorted: number[], p: number): number {
+  if (!sorted.length) return 0;
+  const idx = Math.min(Math.floor(sorted.length * p), sorted.length - 1);
+  return sorted[idx];
+}
 
+function average(values: number[]): number {
+  if (!values.length) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function getPoolMax(pool: Pool): number {
+  const optionsMax = (pool as any)?.options?.max;
+  if (typeof optionsMax === 'number' && !Number.isNaN(optionsMax)) return optionsMax;
+  return 1;
+}
+
+function setPoolMax(pool: Pool, maxConnections: number): void {
+  if ((pool as any)?.options) {
+    (pool as any).options.max = maxConnections;
+  }
+  if (typeof (pool as any).setMaxConnections === 'function') {
+    (pool as any).setMaxConnections(maxConnections);
+  }
+}
+
+class AdaptivePoolProbe {
+  private readonly pool: Pool;
+  private readonly tier: PoolTier;
+  private readonly config: Required<AdaptivePoolConfig>;
+  private readonly durationSamplesMs: number[] = [];
+  private readonly waitSamplesMs: number[] = [];
+  private readonly utilizationSamples: number[] = [];
+  private interval: NodeJS.Timeout | null = null;
+  private lastAdjustmentDirection: number | null = null;
+  private lastAdjustmentAt = 0;
+  private integral = 0;
+  private previousError = 0;
+  private targetConnections: number;
+
+  constructor(pool: Pool, tier: PoolTier, config?: AdaptivePoolConfig) {
+    this.pool = pool;
+    this.tier = tier;
+    this.config = {
+      enabled: true,
+      probeIntervalMs: 10_000,
+      minConnections: 5,
+      maxConnections: 200,
+      adjustmentStep: 5,
+      latencyThresholdMs: 100,
+      waitThresholdMs: 50,
+      cooldownMs: 60_000,
+      kp: 1.0,
+      ki: 0.1,
+      kd: 0.05,
+      ...config,
+    };
+    this.targetConnections = this.clamp(getPoolMax(pool));
+  }
+
+  start(): void {
+    if (!this.config.enabled) return;
+    if (this.interval) return;
+    this.interval = setInterval(() => this.evaluate(), this.config.probeIntervalMs);
+  }
+
+  stop(): void {
+    if (this.interval) {
+      clearInterval(this.interval);
+      this.interval = null;
+    }
+  }
+
+  recordSample(durationMs: number, waitMs: number, utilization: number): void {
+    this.durationSamplesMs.push(durationMs);
+    if (this.durationSamplesMs.length > SAMPLE_WINDOW) this.durationSamplesMs.shift();
+
+    this.waitSamplesMs.push(waitMs);
+    if (this.waitSamplesMs.length > SAMPLE_WINDOW) this.waitSamplesMs.shift();
+
+    this.utilizationSamples.push(utilization);
+    if (this.utilizationSamples.length > SAMPLE_WINDOW) this.utilizationSamples.shift();
+  }
+
+  prometheusMetrics(): string {
+    return [
+      `# HELP pool_max_connections Current configured maximum connections for the pool`,
+      '# TYPE pool_max_connections gauge',
+      `pool_max_connections{pool="${this.tier}"} ${getPoolMax(this.pool)}`,
+      '',
+      `# HELP pool_target_connections Adaptive target max-connections computed by the health probe`,
+      '# TYPE pool_target_connections gauge',
+      `pool_target_connections{pool="${this.tier}"} ${this.targetConnections}`,
+      '',
+    ].join('\n');
+  }
+
+  private evaluate(): void {
+    if (!this.durationSamplesMs.length || !this.utilizationSamples.length) return;
+
+    const durationP95 = percentile([...this.durationSamplesMs].sort((a, b) => a - b), 0.95);
+    const waitP90 = percentile([...this.waitSamplesMs].sort((a, b) => a - b), 0.9);
+    const utilization = average(this.utilizationSamples);
+
+    const latencyError = (durationP95 - this.config.latencyThresholdMs) / this.config.latencyThresholdMs;
+    const waitError = (waitP90 - this.config.waitThresholdMs) / this.config.waitThresholdMs;
+    const error = Math.max(latencyError, waitError);
+
+    const dt = this.config.probeIntervalMs / 1000;
+    this.integral += error * dt;
+    const derivative = (error - this.previousError) / dt;
+    this.previousError = error;
+    const pid = this.config.kp * error + this.config.ki * this.integral + this.config.kd * derivative;
+
+    const now = Date.now();
+    const desiredStep = Math.sign(pid) * this.config.adjustmentStep;
+    const currentMax = getPoolMax(this.pool);
+    let nextMax = currentMax;
+    let nextDirection = 0;
+
+    if (pid > 0.2) {
+      nextDirection = 1;
+      if (this.canAdjust(1, now)) {
+        nextMax = this.clamp(currentMax + this.config.adjustmentStep);
+      }
+    } else if (pid < -0.2 && durationP95 < this.config.latencyThresholdMs && waitP90 < this.config.waitThresholdMs && utilization < 0.6) {
+      nextDirection = -1;
+      if (this.canAdjust(-1, now)) {
+        nextMax = this.clamp(currentMax - this.config.adjustmentStep);
+      }
+    }
+
+    if (nextMax !== currentMax) {
+      this.targetConnections = nextMax;
+      setPoolMax(this.pool, nextMax);
+      this.lastAdjustmentDirection = nextDirection;
+      this.lastAdjustmentAt = now;
+    }
+  }
+
+  private canAdjust(direction: number, now: number): boolean {
+    if (this.lastAdjustmentDirection !== direction) return true;
+    return now - this.lastAdjustmentAt >= this.config.cooldownMs;
+  }
+
+  private clamp(maxConnections: number): number {
+    return Math.min(this.config.maxConnections, Math.max(this.config.minConnections, maxConnections));
+  }
+}
 // ── PriorityRouter ────────────────────────────────────────────────────────────
 
 export class PriorityRouter {
   readonly oltpPool: Pool;
   readonly olapPool: Pool;
   private readonly spilloverWaitMs: number;
+  private readonly oltpProbe: AdaptivePoolProbe;
+  private readonly olapProbe: AdaptivePoolProbe;
   private log = createLogger('pool_isolation', { 'db.system': 'postgresql' });
   private readonly metrics: MetricsState = {
     queryTimeoutTotal: { oltp: 0, olap: 0 },
@@ -130,6 +295,11 @@ export class PriorityRouter {
       { ...base, max: config.olapMaxConnections ?? 30, statement_timeout: 300_000 },
       'olap',
     );
+
+    this.oltpProbe = new AdaptivePoolProbe(this.oltpPool, 'oltp', config.adaptiveScaling);
+    this.olapProbe = new AdaptivePoolProbe(this.olapPool, 'olap', config.adaptiveScaling);
+    this.oltpProbe.start();
+    this.olapProbe.start();
 
     this.oltpPool.on('error', (err) =>
       this.log.error('OLTP pool error', { 'pool.tier': 'oltp', 'error.message': err.message }),
@@ -211,10 +381,15 @@ export class PriorityRouter {
       '# HELP pool_spillover_total Total OLTP→OLAP spillover events',
       '# TYPE pool_spillover_total counter',
       `pool_spillover_total ${this.metrics.spilloverTotal}`,
+      '',
+      this.oltpProbe.prometheusMetrics(),
+      this.olapProbe.prometheusMetrics(),
     ].join('\n');
   }
 
   async close(): Promise<void> {
+    this.oltpProbe.stop();
+    this.olapProbe.stop();
     await Promise.all([this.oltpPool.end(), this.olapPool.end()]);
   }
 
@@ -226,14 +401,22 @@ export class PriorityRouter {
     text: string,
     params?: any[],
   ): Promise<QueryResult<T>> {
-    const t0 = performance.now();
+    const waitStart = performance.now();
+    const client = await pool.connect();
+    const waitMs = performance.now() - waitStart;
+    const execStart = performance.now();
+
     try {
-      return await pool.query<T>(text, params);
+      const result = await client.query<T>(text, params);
+      return result;
     } catch (err) {
       if (isTimeoutError(err)) this.metrics.queryTimeoutTotal[tier]++;
       throw err;
     } finally {
-      this._recordSample(tier, performance.now() - t0);
+      const durationMs = performance.now() - execStart;
+      const utilization = this.calculateUtilization(pool);
+      this._recordSample(tier, durationMs, waitMs, utilization);
+      client.release();
     }
   }
 
@@ -251,6 +434,7 @@ export class PriorityRouter {
     }
 
     // Slow path: race connection acquisition against the spillover threshold
+    const waitStart = performance.now();
     const clientPromise = this.oltpPool.connect();
     const spillTimer = delay(this.spilloverWaitMs).then(() => null as null);
 
@@ -269,22 +453,34 @@ export class PriorityRouter {
 
     // Got a client in time — execute on OLTP
     const client = winner;
-    const t0 = performance.now();
+    const waitMs = performance.now() - waitStart;
+    const execStart = performance.now();
     try {
       return await client.query<T>(text, params);
     } catch (err) {
       if (isTimeoutError(err)) this.metrics.queryTimeoutTotal.oltp++;
       throw err;
     } finally {
+      const durationMs = performance.now() - execStart;
+      const utilization = this.calculateUtilization(this.oltpPool);
+      this._recordSample('oltp', durationMs, waitMs, utilization);
       client.release();
-      this._recordSample('oltp', performance.now() - t0);
     }
   }
 
-  private _recordSample(tier: PoolTier, ms: number): void {
+  private calculateUtilization(pool: Pool): number {
+    const max = getPoolMax(pool);
+    if (!max) return 0;
+    return (pool.totalCount - pool.idleCount) / max;
+  }
+
+  private _recordSample(tier: PoolTier, ms: number, waitMs: number, utilization: number): void {
     const samples = this.metrics.durationSamplesMs[tier];
     samples.push(ms);
     if (samples.length > SAMPLE_WINDOW) samples.shift();
+
+    const probe = tier === 'oltp' ? this.oltpProbe : this.olapProbe;
+    probe.recordSample(ms, waitMs, utilization);
   }
 }
 
