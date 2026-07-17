@@ -111,6 +111,25 @@ async function bootstrap() {
   // 3. Set up Express middleware
   app.use(express.json());
 
+  const rateLimiterModule = loadTsModule('security/rate_limiter');
+  if (rateLimiterModule && typeof rateLimiterModule.createRateLimitingMiddleware === 'function') {
+    const rateLimitingMiddleware = rateLimiterModule.createRateLimitingMiddleware({
+      redisUrl: process.env.RATE_LIMIT_REDIS_URL,
+      endpointTiers: {
+        '/': 'free',
+        '/debug/traces/config': 'pro',
+        '/health/pools': 'enterprise',
+        '/metrics': 'free',
+        '/debug/config-drift': 'pro',
+        '/debug/config-drift/history': 'pro',
+        '/debug/config-drift/ui': 'pro',
+        '/internal/archival/renew/:contractId': 'enterprise',
+      },
+      defaultTier: 'free',
+    });
+    app.use(rateLimitingMiddleware);
+  }
+
   // 4. mTLS middleware
   const mtlsModule = loadTsModule('security/mtls');
   const mtlsManager = mtlsModule && typeof mtlsModule.createMtlsManager === 'function'
