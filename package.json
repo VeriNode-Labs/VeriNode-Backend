@@ -42,7 +42,7 @@
     "dotenv": "^17.2.4",
     "express": "^5.2.1",
     "pg": "^8.22.0",
-    "redis": "^4.9.0"
+    "redis": "^4.7.0"
   },
   "devDependencies": {
     "@opentelemetry/core": "^2.8.0",
