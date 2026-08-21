@@ -43,9 +43,7 @@ export function degradeOnLevel(minLevel: SheddingLevel, options: FlagCheckOption
   };
 }
 
-export function featureFlagMiddleware(flagKey: string, options: FlagCheckOptions = {}): RequestHandler {
-  return requireFlag(flagKey, options);
-}
+
 
 export function initGracefulDegradation(config: DegradationConfig): void {
   registerFlags(config.flags);

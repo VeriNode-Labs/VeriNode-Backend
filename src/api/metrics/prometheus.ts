@@ -431,45 +431,7 @@ export class PrometheusMetrics {
     return defaultRegistry.renderAll();
   }
 
-  // ── Express handlers ────────────────────────────────────────────────────
 
-  /** Express middleware: records HTTP request duration per route pattern. */
-  getMiddleware(): (req: Request, res: Response, next: NextFunction) => void {
-    const httpCollector = this.httpCollector;
-
-    return (req: Request, res: Response, next: NextFunction): void => {
-      const startHr = process.hrtime.bigint();
-
-      res.on('finish', () => {
-        const durationNs = process.hrtime.bigint() - startHr;
-        const durationS = Number(durationNs) / 1e9;
-
-        // Normalise route: use matched Express route pattern if available,
-        // otherwise use the raw pathname with query stripped.
-        const route = req.route?.path ?? req.path ?? req.url.split('?')[0];
-        const method = req.method.toUpperCase();
-        const statusCode = String(res.statusCode);
-        const responseSizeBytes = Number(
-          res.getHeader('content-length') ?? 0,
-        );
-
-        const traceId = currentTraceId();
-        const exemplar: Exemplar | undefined =
-          traceId ? { traceId, value: durationS } : undefined;
-
-        httpCollector.record({
-          route,
-          method,
-          statusCode,
-          durationS,
-          responseSizeBytes,
-          exemplar,
-        });
-      });
-
-      next();
-    };
-  }
 
   /**
    * Express handler for GET /metrics

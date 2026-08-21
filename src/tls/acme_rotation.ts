@@ -100,14 +100,6 @@ export interface ServiceCertStatus {
   alerting: boolean;
 }
 
-export interface CertRenewRequest {
-  /** Service name to renew. If omitted, all services are renewed. */
-  service?: string;
-}
-
-export interface CertRenewResponse {
-  results: Array<{ service: string } & RenewalResult>;
-}
 
 /** Options for a single managed service. */
 export interface ManagedServiceOptions {
@@ -563,9 +555,8 @@ export class CertLifecycleManager extends EventEmitter {
     return this.running;
   }
 
-  /** Run renewal checks for all services immediately. */
-  async checkAllOnce(): Promise<CertRenewResponse> {
-    const results: CertRenewResponse['results'] = [];
+  async checkAllOnce(): Promise<{ results: Array<{ service: string } & RenewalResult> }> {
+    const results: Array<{ service: string } & RenewalResult> = [];
     for (const [service, manager] of this.managers) {
       try {
         this.metrics.recordRenewalAttempt(service);
@@ -663,53 +654,7 @@ export class CertLifecycleManager extends EventEmitter {
   }
 }
 
-// ── Management API Routes ─────────────────────────────────────────────────────
 
-/**
- * Register the certificate management API routes on an Express app.
- *
- * Routes:
- *   POST /api/v1/certs/renew   — trigger renewal for one or all services
- *   GET  /api/v1/certs/status  — return current status for all services
- */
-export function registerCertManagementRoutes(app: any, manager: CertLifecycleManager): void {
-  /**
-   * GET /api/v1/certs/status
-   * Returns an array of ServiceCertStatus for all managed services.
-   */
-  app.get('/api/v1/certs/status', async (_req: any, res: any) => {
-    try {
-      const statuses = await manager.getAllStatus();
-      res.json({ services: statuses });
-    } catch (err) {
-      res.status(500).json({
-        error: err instanceof Error ? err.message : 'failed to get certificate status',
-      });
-    }
-  });
-
-  /**
-   * POST /api/v1/certs/renew
-   * Body: { service?: string }
-   * Triggers renewal for a named service or all services if service is omitted.
-   */
-  app.post('/api/v1/certs/renew', async (req: any, res: any) => {
-    try {
-      const body: CertRenewRequest = req.body ?? {};
-      if (body.service) {
-        const result = await manager.checkServiceOnce(body.service);
-        res.json({ results: [result] });
-      } else {
-        const response = await manager.checkAllOnce();
-        res.json(response);
-      }
-    } catch (err) {
-      res.status(500).json({
-        error: err instanceof Error ? err.message : 'renewal failed',
-      });
-    }
-  });
-}
 
 export class TlsCertificateReloader extends EventEmitter {
   private currentContext: tls.SecureContext | null = null;
