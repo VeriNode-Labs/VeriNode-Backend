@@ -205,7 +205,10 @@ export class KafkaConsumerMonitor {
     laggingPartitions: number,
     partitionCount: number,
   ): ConsumerGroupStatus {
-    if (totalLag >= this.config.lagCriticalThreshold || maxLag >= this.config.partitionLagCriticalThreshold) {
+    if (
+      totalLag >= this.config.lagCriticalThreshold ||
+      maxLag >= this.config.partitionLagCriticalThreshold
+    ) {
       return 'critical';
     }
     if (

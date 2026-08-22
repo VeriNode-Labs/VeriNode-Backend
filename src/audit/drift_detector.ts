@@ -55,11 +55,7 @@ export class DriftDetector {
 
   private async _detectInternal(liveConfig: object): Promise<void> {
     const tracer = trace.getTracer(TRACER_NAME);
-    const span = tracer.startSpan(
-      'config_audit.detect_drift',
-      {},
-      context.active(),
-    );
+    const span = tracer.startSpan('config_audit.detect_drift', {}, context.active());
     const t0 = performance.now();
 
     try {
@@ -85,7 +81,10 @@ export class DriftDetector {
       let diffs: DriftedKey[];
       try {
         const baselineObj = this.baselineManager.deserializeBaseline(baseline.snapshotJson);
-        const rawDiffs = deepDiff(baselineObj as Record<string, unknown>, liveConfig as Record<string, unknown>);
+        const rawDiffs = deepDiff(
+          baselineObj as Record<string, unknown>,
+          liveConfig as Record<string, unknown>,
+        );
         diffs = rawDiffs.map((d) => ({ ...d, severity: classify(d.path) }));
       } catch (err) {
         // Unexpected error during diff — send partial alert for critical keys
@@ -185,11 +184,7 @@ export function deepDiff(
       !Array.isArray(lVal)
     ) {
       diffs.push(
-        ...deepDiff(
-          bVal as Record<string, unknown>,
-          lVal as Record<string, unknown>,
-          fullPath,
-        ),
+        ...deepDiff(bVal as Record<string, unknown>, lVal as Record<string, unknown>, fullPath),
       );
     } else if (JSON.stringify(bVal) !== JSON.stringify(lVal)) {
       diffs.push({ path: fullPath, baselineValue: bVal, liveValue: lVal });

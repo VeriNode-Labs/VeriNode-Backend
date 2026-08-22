@@ -108,7 +108,7 @@ export function computeHashFromFlattened(flat: Record<string, string>): string {
   for (const k of keys) {
     const s = `${k}=${flat[k]};`;
     for (let i = 0; i < s.length; i++) {
-      hash = ((hash << 5) + hash) + s.charCodeAt(i);
+      hash = (hash << 5) + hash + s.charCodeAt(i);
       hash = hash >>> 0;
     }
   }
@@ -127,7 +127,10 @@ export function keyMatchesPrefix(flatKey: string, prefix: string): boolean {
 /**
  * Get a value from flattened structure by prefix (debug use).
  */
-export function getFlattenedPrefixValues(flat: Record<string, string>, prefix: string): Record<string, string> {
+export function getFlattenedPrefixValues(
+  flat: Record<string, string>,
+  prefix: string,
+): Record<string, string> {
   const out: Record<string, string> = {};
   const keys = Object.keys(flat);
   for (const k of keys) {
@@ -135,4 +138,3 @@ export function getFlattenedPrefixValues(flat: Record<string, string>, prefix: s
   }
   return out;
 }
-

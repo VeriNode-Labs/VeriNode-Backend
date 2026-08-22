@@ -139,10 +139,14 @@ export class IncidentRunbookAutomation {
 
   private matchRunbook(signal: IncidentSignal): RunbookDefinition {
     const runbook = this.opts.runbooks.find(
-      (candidate) => candidate.servicePattern.test(signal.service) && candidate.metricPattern.test(signal.metric),
+      (candidate) =>
+        candidate.servicePattern.test(signal.service) &&
+        candidate.metricPattern.test(signal.metric),
     );
     if (!runbook) {
-      throw new Error(`No incident runbook matches service=${signal.service} metric=${signal.metric}`);
+      throw new Error(
+        `No incident runbook matches service=${signal.service} metric=${signal.metric}`,
+      );
     }
     return runbook;
   }
@@ -150,7 +154,15 @@ export class IncidentRunbookAutomation {
 
 export function incidentIdFor(signal: IncidentSignal, runbookId: string): string {
   const digest = createHash('sha256')
-    .update([signal.service, signal.metric, signal.severity, runbookId, signal.labels?.region ?? 'global'].join('|'))
+    .update(
+      [
+        signal.service,
+        signal.metric,
+        signal.severity,
+        runbookId,
+        signal.labels?.region ?? 'global',
+      ].join('|'),
+    )
     .digest('hex')
     .slice(0, 32);
   return `incident:${digest}`;
@@ -205,14 +217,16 @@ export const defaultIncidentRunbooks: RunbookDefinition[] = [
         id: 'confirm-slo-breach',
         description: 'Confirm the P99 latency breach across the active and canary stacks.',
         command: 'verinodectl slo latency --window=5m --percentile=99',
-        expectedOutcome: 'The alert is confirmed or marked as a false positive before remediation begins.',
+        expectedOutcome:
+          'The alert is confirmed or marked as a false positive before remediation begins.',
         timeoutMs: 30000,
       },
       {
         id: 'shift-traffic-blue-green',
         description: 'Shift traffic away from the degraded color using the blue-green controller.',
         command: 'verinodectl deploy traffic-shift --from=degraded --to=healthy --step=25',
-        expectedOutcome: 'Traffic moves in bounded increments while canary analysis remains healthy.',
+        expectedOutcome:
+          'Traffic moves in bounded increments while canary analysis remains healthy.',
         timeoutMs: 60000,
         rollbackCommand: 'verinodectl deploy traffic-shift --rollback',
       },

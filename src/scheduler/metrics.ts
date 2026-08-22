@@ -95,16 +95,12 @@ export class JobSchedulerMetrics {
     lines.push('# HELP verinode_job_duration_seconds Job execution duration.');
     lines.push('# TYPE verinode_job_duration_seconds histogram');
     for (const bucket of DURATION_BUCKETS) {
-      const count = this.executionRecords.filter(
-        (r) => r.durationMs <= bucket,
-      ).length;
+      const count = this.executionRecords.filter((r) => r.durationMs <= bucket).length;
       lines.push(
         `verinode_job_duration_seconds_bucket{le="${(bucket / 1000).toFixed(3)}"} ${count}`,
       );
     }
-    lines.push(
-      `verinode_job_duration_seconds_bucket{le="+Inf"} ${this.executionRecords.length}`,
-    );
+    lines.push(`verinode_job_duration_seconds_bucket{le="+Inf"} ${this.executionRecords.length}`);
     const sum = this.executionRecords.reduce((s, r) => s + r.durationMs, 0);
     lines.push(`verinode_job_duration_seconds_sum ${(sum / 1000).toFixed(6)}`);
     lines.push(`verinode_job_duration_seconds_count ${this.executionRecords.length}`);
@@ -119,11 +115,15 @@ export class JobSchedulerMetrics {
     lines.push(`verinode_jobs_failed_total ${this.jobsFailedTotal}`);
 
     // ── Lease Timeouts ──
-    lines.push('# HELP verinode_job_lease_timeouts_total Jobs that timed out while holding a lease.');
+    lines.push(
+      '# HELP verinode_job_lease_timeouts_total Jobs that timed out while holding a lease.',
+    );
     lines.push('# TYPE verinode_job_lease_timeouts_total counter');
     lines.push(`verinode_job_lease_timeouts_total ${this.leaseTimeoutTotal}`);
 
-    lines.push('# HELP verinode_job_lease_expired_total Job leases that expired (reclaimed by another worker).');
+    lines.push(
+      '# HELP verinode_job_lease_expired_total Job leases that expired (reclaimed by another worker).',
+    );
     lines.push('# TYPE verinode_job_lease_expired_total counter');
     lines.push(`verinode_job_lease_expired_total ${this.leaseExpiredTotal}`);
 

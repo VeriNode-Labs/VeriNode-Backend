@@ -74,11 +74,7 @@ export class JobScheduler {
    * Enqueue a job for distributed execution.
    * Returns the job ID for tracking.
    */
-  async schedule<T>(
-    jobType: JobType,
-    payload: T,
-    options?: ScheduleOptions,
-  ): Promise<string> {
+  async schedule<T>(jobType: JobType, payload: T, options?: ScheduleOptions): Promise<string> {
     const jobId = await this.jobStore.scheduleJob(jobType, payload, options);
     this.log.info('Job scheduled', {
       job_id: jobId,
@@ -97,10 +93,12 @@ export class JobScheduler {
     handler: JobHandler<T>,
     config?: Partial<WorkerConfig>,
   ): JobWorker<T> {
-    const resolvedWorkerId = config?.workerId ?? workerIdFromConfig({
-      ...DEFAULT_WORKER_CONFIG,
-      ...(config ?? {}),
-    } as WorkerConfig);
+    const resolvedWorkerId =
+      config?.workerId ??
+      workerIdFromConfig({
+        ...DEFAULT_WORKER_CONFIG,
+        ...(config ?? {}),
+      } as WorkerConfig);
     const fullConfig: WorkerConfig = {
       ...DEFAULT_WORKER_CONFIG,
       ...(config ?? {}),
@@ -389,13 +387,9 @@ export class JobWorker<T = unknown> {
 
         if (this.dlqManager) {
           try {
-            await this.dlqManager.process(
-              job.jobType,
-              job.payload,
-              async () => {
-                throw err;
-              },
-            );
+            await this.dlqManager.process(job.jobType, job.payload, async () => {
+              throw err;
+            });
           } catch {
             // DLQ insertion is best-effort
           }

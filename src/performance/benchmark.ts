@@ -60,10 +60,7 @@ export class BenchmarkRunner {
    * Run a single scenario function repeatedly for `durationMs` milliseconds.
    * Collects per-iteration latency, error count, and throughput.
    */
-  async runScenario(
-    scenario: string,
-    fn: () => Promise<void>,
-  ): Promise<BenchmarkMetrics> {
+  async runScenario(scenario: string, fn: () => Promise<void>): Promise<BenchmarkMetrics> {
     const latencySamples: number[] = [];
     let errorCount = 0;
     let iterationCount = 0;
@@ -88,9 +85,7 @@ export class BenchmarkRunner {
     };
 
     // Launch workers.
-    await Promise.all(
-      Array.from({ length: concurrency }, () => worker()),
-    );
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
     const sorted = latencySamples.slice().sort((a, b) => a - b);
     const elapsedS = this.config.durationMs / 1000;
@@ -102,8 +97,7 @@ export class BenchmarkRunner {
       p95LatencyMs: this.computePercentile(sorted, 95),
       p99LatencyMs: this.computePercentile(sorted, 99),
       throughputRps: iterationCount / elapsedS,
-      errorRate:
-        iterationCount > 0 ? errorCount / iterationCount : 0,
+      errorRate: iterationCount > 0 ? errorCount / iterationCount : 0,
     };
   }
 
@@ -116,9 +110,7 @@ export class BenchmarkRunner {
    *                  Only entries whose keys appear in `this.config.scenarios`
    *                  will be executed.
    */
-  async run(
-    scenarios: Record<string, () => Promise<void>>,
-  ): Promise<BenchmarkMetrics[]> {
+  async run(scenarios: Record<string, () => Promise<void>>): Promise<BenchmarkMetrics[]> {
     const results: BenchmarkMetrics[] = [];
 
     for (const name of this.config.scenarios) {
@@ -127,7 +119,9 @@ export class BenchmarkRunner {
         console.warn(`[BenchmarkRunner] No function registered for scenario "${name}" — skipping.`);
         continue;
       }
-      console.log(`[BenchmarkRunner] Running scenario "${name}" for ${this.config.durationMs / 1000}s…`);
+      console.log(
+        `[BenchmarkRunner] Running scenario "${name}" for ${this.config.durationMs / 1000}s…`,
+      );
       const result = await this.runScenario(name, fn);
       results.push(result);
       console.log(

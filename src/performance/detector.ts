@@ -12,12 +12,7 @@
  */
 
 import { findChangePoints } from './edm';
-import type {
-  BenchmarkMetrics,
-  BaselineComparison,
-  RegressionReport,
-  ChangePoint,
-} from './types';
+import type { BenchmarkMetrics, BaselineComparison, RegressionReport, ChangePoint } from './types';
 
 /** Metrics where a larger value means worse performance. */
 const HIGHER_IS_WORSE: ReadonlySet<string> = new Set([
@@ -61,10 +56,7 @@ export class RegressionDetector {
    * Compare all numeric metrics between a current measurement and a
    * baseline.  Returns one `BaselineComparison` per tracked metric.
    */
-  compare(
-    current: BenchmarkMetrics,
-    baseline: BenchmarkMetrics,
-  ): BaselineComparison[] {
+  compare(current: BenchmarkMetrics, baseline: BenchmarkMetrics): BaselineComparison[] {
     const comparisons: BaselineComparison[] = [];
 
     for (const key of TRACKED_METRICS) {
@@ -75,11 +67,7 @@ export class RegressionDetector {
       if (baselineValue === undefined || currentValue === undefined) continue;
       if (baselineValue === null || currentValue === null) continue;
 
-      const regressionPercent = computeRegressionPercent(
-        key,
-        baselineValue,
-        currentValue,
-      );
+      const regressionPercent = computeRegressionPercent(key, baselineValue, currentValue);
 
       comparisons.push({
         scenario: current.scenario,
@@ -87,8 +75,7 @@ export class RegressionDetector {
         baselineValue,
         currentValue,
         regressionPercent,
-        isRegression:
-          regressionPercent > this.config.regressionThresholdPercent,
+        isRegression: regressionPercent > this.config.regressionThresholdPercent,
       });
     }
 
@@ -101,10 +88,7 @@ export class RegressionDetector {
    * Run EDM change point detection on a historical series of benchmark
    * records for the given metric.
    */
-  analyzeTimeSeries(
-    series: BenchmarkMetrics[],
-    metric: keyof BenchmarkMetrics,
-  ): ChangePoint[] {
+  analyzeTimeSeries(series: BenchmarkMetrics[], metric: keyof BenchmarkMetrics): ChangePoint[] {
     if (series.length < this.config.minSamples) return [];
 
     const values = series.map((m) => {
@@ -124,22 +108,14 @@ export class RegressionDetector {
   // ── Report generation ─────────────────────────────────────────────────
 
   /** Combine comparisons and change points into a structured report. */
-  generateReport(
-    comparisons: BaselineComparison[],
-    changePoints: ChangePoint[],
-  ): RegressionReport {
+  generateReport(comparisons: BaselineComparison[], changePoints: ChangePoint[]): RegressionReport {
     const regressions = comparisons.filter((c) => c.isRegression);
 
     const summary =
       regressions.length === 0
         ? `No regressions detected across ${comparisons.length} metrics.`
         : `⚠️  ${regressions.length} regression(s) detected: ` +
-          regressions
-            .map(
-              (r) =>
-                `${r.metric} +${r.regressionPercent.toFixed(1)}%`,
-            )
-            .join(', ');
+          regressions.map((r) => `${r.metric} +${r.regressionPercent.toFixed(1)}%`).join(', ');
 
     return {
       hasRegression: regressions.length > 0,
@@ -168,18 +144,12 @@ export class RegressionDetector {
     }
 
     lines.push('');
-    lines.push(
-      '| Metric | Baseline | Current | Change | Status |',
-    );
-    lines.push(
-      '|--------|----------|---------|--------|--------|',
-    );
+    lines.push('| Metric | Baseline | Current | Change | Status |');
+    lines.push('|--------|----------|---------|--------|--------|');
 
     for (const c of report.regressions.concat(
       // include non-regressions after
-      report.regressions.length > 0
-        ? []
-        : [],
+      report.regressions.length > 0 ? [] : [],
     )) {
       const changeStr =
         c.regressionPercent >= 0
@@ -213,7 +183,9 @@ export class RegressionDetector {
     }
 
     lines.push('');
-    lines.push(`> Analysis threshold: >${this.config.regressionThresholdPercent}% degradation triggers CI block.`);
+    lines.push(
+      `> Analysis threshold: >${this.config.regressionThresholdPercent}% degradation triggers CI block.`,
+    );
 
     return lines.join('\n');
   }

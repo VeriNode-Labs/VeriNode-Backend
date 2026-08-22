@@ -150,10 +150,9 @@ export class PgDeadLetterRepository implements DeadLetterRepository {
   }
 
   async purgeExpired(now: Date = new Date()): Promise<number> {
-    const result = await this.db.query(
-      `DELETE FROM dead_letter_queue WHERE expires_at <= $1`,
-      [now.toISOString()],
-    );
+    const result = await this.db.query(`DELETE FROM dead_letter_queue WHERE expires_at <= $1`, [
+      now.toISOString(),
+    ]);
     return result.rowCount ?? 0;
   }
 
@@ -331,7 +330,11 @@ export class DeadLetterQueueManager {
   }
 }
 
-function serializeError(errorValue: unknown): { type: string; message: string; stackTrace: string | null } {
+function serializeError(errorValue: unknown): {
+  type: string;
+  message: string;
+  stackTrace: string | null;
+} {
   if (errorValue instanceof Error) {
     return {
       type: errorValue.name || 'Error',

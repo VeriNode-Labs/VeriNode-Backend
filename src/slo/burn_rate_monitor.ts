@@ -31,12 +31,14 @@ export interface SloEvaluation {
   status: SloStatus;
   errorBudgetRemaining: number;
   errorBudgetSpent: number;
-  windows: Array<SloWindowSample & {
-    errorRate: number;
-    burnRate: number;
-    exhaustedInHours: number | null;
-    severity: SloStatus;
-  }>;
+  windows: Array<
+    SloWindowSample & {
+      errorRate: number;
+      burnRate: number;
+      exhaustedInHours: number | null;
+      severity: SloStatus;
+    }
+  >;
   violatedThresholds: BurnRateThreshold[];
   evaluatedAt: Date;
 }
@@ -127,11 +129,13 @@ export class BurnRateMonitor {
 
     const totalEvents = samples.reduce((sum, sample) => sum + sample.totalEvents, 0);
     const totalGoodEvents = samples.reduce((sum, sample) => sum + sample.goodEvents, 0);
-    const aggregateErrorRate = totalEvents === 0 ? 0 : (totalEvents - totalGoodEvents) / totalEvents;
+    const aggregateErrorRate =
+      totalEvents === 0 ? 0 : (totalEvents - totalGoodEvents) / totalEvents;
     const errorBudgetSpent = allowedErrorRate === 0 ? 0 : aggregateErrorRate / allowedErrorRate;
     const errorBudgetRemaining = Math.max(0, 1 - errorBudgetSpent);
     const status = evaluatedWindows.reduce<SloStatus>(
-      (highest, window) => this.rankSeverity(window.severity) > this.rankSeverity(highest) ? window.severity : highest,
+      (highest, window) =>
+        this.rankSeverity(window.severity) > this.rankSeverity(highest) ? window.severity : highest,
       'healthy',
     );
     const violatedThresholds: BurnRateThreshold[] = [];

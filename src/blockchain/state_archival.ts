@@ -93,17 +93,19 @@ export class StateArchivalListener {
       `SELECT contract_id, data_key, current_ttl_ledgers, last_renewed_at
        FROM state_archival_watchlist`,
     );
-    return result.rows.map((r: {
-      contract_id: string;
-      data_key: CriticalDataKey;
-      current_ttl_ledgers: number;
-      last_renewed_at: Date | null;
-    }) => ({
-      contractId: r.contract_id,
-      dataKey: r.data_key,
-      currentTtlLedgers: r.current_ttl_ledgers,
-      lastRenewedAt: r.last_renewed_at,
-    }));
+    return result.rows.map(
+      (r: {
+        contract_id: string;
+        data_key: CriticalDataKey;
+        current_ttl_ledgers: number;
+        last_renewed_at: Date | null;
+      }) => ({
+        contractId: r.contract_id,
+        dataKey: r.data_key,
+        currentTtlLedgers: r.current_ttl_ledgers,
+        lastRenewedAt: r.last_renewed_at,
+      }),
+    );
   }
 
   /** Registers all 5 critical keys for a verification node into the watchlist. */
@@ -208,7 +210,9 @@ export class StateArchivalListener {
     });
     await this.applyRenewalResult(contractId, result);
     if (!result.txResult.success) {
-      throw new Error(`manual renewal failed for ${contractId} after ${result.attempts} attempt(s)`);
+      throw new Error(
+        `manual renewal failed for ${contractId} after ${result.attempts} attempt(s)`,
+      );
     }
     return { ttl: DEFAULT_TTL_LEDGERS, txHash: result.txResult.hash };
   }

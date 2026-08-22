@@ -22,9 +22,7 @@ import { MetricCollector, defaultRegistry } from './registry';
 
 // ── HTTP Histogram Buckets ────────────────────────────────────────────────
 
-const HTTP_DURATION_BUCKETS = [
-  0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0,
-];
+const HTTP_DURATION_BUCKETS = [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0];
 
 // ── Thread State Types ────────────────────────────────────────────────────
 
@@ -126,12 +124,18 @@ class ThreadStateCollector implements MetricCollector {
 
 function mapProcState(s: string): ThreadState {
   switch (s) {
-    case 'R': return 'Running';
-    case 'S': return 'Sleeping';
-    case 'D': return 'Blocked';      // Uninterruptible sleep (IO wait)
-    case 'Z': return 'Zombie';
-    case 'T': return 'Blocked';      // Stopped / traced
-    default:   return 'Sleeping';
+    case 'R':
+      return 'Running';
+    case 'S':
+      return 'Sleeping';
+    case 'D':
+      return 'Blocked'; // Uninterruptible sleep (IO wait)
+    case 'Z':
+      return 'Zombie';
+    case 'T':
+      return 'Blocked'; // Stopped / traced
+    default:
+      return 'Sleeping';
   }
 }
 
@@ -153,13 +157,19 @@ class RuntimeMetricsCollector implements MetricCollector {
     //   - active requests → numBlockingThreads
     //   - eventLoopUtilization → workerPollDurationSeconds
 
-    const handles = (process as NodeJS.Process & {
-      _getActiveHandles?: () => unknown[];
-    })._getActiveHandles?.()?.length ?? 0;
+    const handles =
+      (
+        process as NodeJS.Process & {
+          _getActiveHandles?: () => unknown[];
+        }
+      )._getActiveHandles?.()?.length ?? 0;
 
-    const requests = (process as NodeJS.Process & {
-      _getActiveRequests?: () => unknown[];
-    })._getActiveRequests?.()?.length ?? 0;
+    const requests =
+      (
+        process as NodeJS.Process & {
+          _getActiveRequests?: () => unknown[];
+        }
+      )._getActiveRequests?.()?.length ?? 0;
 
     this.ioDriverReadyCount = handles;
     this.numBlockingThreads = requests;
@@ -191,7 +201,9 @@ class RuntimeMetricsCollector implements MetricCollector {
     lines.push('# TYPE verinode_num_alive_tasks gauge');
     lines.push(`verinode_num_alive_tasks ${this.numAliveTasks}`);
 
-    lines.push('# HELP verinode_num_blocking_threads Active async requests (blocking-thread proxy).');
+    lines.push(
+      '# HELP verinode_num_blocking_threads Active async requests (blocking-thread proxy).',
+    );
     lines.push('# TYPE verinode_num_blocking_threads gauge');
     lines.push(`verinode_num_blocking_threads ${this.numBlockingThreads}`);
 
@@ -249,7 +261,9 @@ class LedgerLagCollector implements MetricCollector {
 
   render(): string {
     const lines: string[] = [];
-    lines.push('# HELP verinode_ledger_confirmation_lag_seconds Delta between latest confirmed ledger and now.');
+    lines.push(
+      '# HELP verinode_ledger_confirmation_lag_seconds Delta between latest confirmed ledger and now.',
+    );
     lines.push('# TYPE verinode_ledger_confirmation_lag_seconds gauge');
     lines.push(`verinode_ledger_confirmation_lag_seconds ${this.lagSeconds.toFixed(6)}`);
     return lines.join('\n');
@@ -280,10 +294,7 @@ class HttpMetricsCollector implements MetricCollector {
 
     // Group records by (route, method, statusCode)
     type Key = string;
-    const grouped = new Map<
-      Key,
-      { records: HttpRecord[]; responseSizeSum: number }
-    >();
+    const grouped = new Map<Key, { records: HttpRecord[]; responseSizeSum: number }>();
 
     for (const rec of this.records) {
       const key = `${rec.route}|${rec.method}|${rec.statusCode}`;
@@ -310,13 +321,19 @@ class HttpMetricsCollector implements MetricCollector {
         const labels = `route="${route}",method="${method}",status_code="${statusCode}",le="${le}"`;
         const lastInBucket = group.records.filter((r) => r.durationS <= le).at(-1);
         const exemplarStr = buildExemplar(lastInBucket?.exemplar);
-        lines.push(`verinode_http_request_duration_seconds_bucket{${labels}} ${count}${exemplarStr}`);
+        lines.push(
+          `verinode_http_request_duration_seconds_bucket{${labels}} ${count}${exemplarStr}`,
+        );
       }
 
       const infLabels = `route="${route}",method="${method}",status_code="${statusCode}",le="+Inf"`;
       lines.push(`verinode_http_request_duration_seconds_bucket{${infLabels}} ${total}`);
-      lines.push(`verinode_http_request_duration_seconds_sum{route="${route}",method="${method}",status_code="${statusCode}"} ${sum.toFixed(6)}`);
-      lines.push(`verinode_http_request_duration_seconds_count{route="${route}",method="${method}",status_code="${statusCode}"} ${total}`);
+      lines.push(
+        `verinode_http_request_duration_seconds_sum{route="${route}",method="${method}",status_code="${statusCode}"} ${sum.toFixed(6)}`,
+      );
+      lines.push(
+        `verinode_http_request_duration_seconds_count{route="${route}",method="${method}",status_code="${statusCode}"} ${total}`,
+      );
     }
 
     // Response size histogram
@@ -329,11 +346,19 @@ class HttpMetricsCollector implements MetricCollector {
       const sizeSum = sizes.reduce((s, v) => s + v, 0);
       for (const le of sizeBuckets) {
         const count = sizes.filter((s) => s <= le).length;
-        lines.push(`verinode_http_response_size_bytes_bucket{route="${route}",method="${method}",status_code="${statusCode}",le="${le}"} ${count}`);
+        lines.push(
+          `verinode_http_response_size_bytes_bucket{route="${route}",method="${method}",status_code="${statusCode}",le="${le}"} ${count}`,
+        );
       }
-      lines.push(`verinode_http_response_size_bytes_bucket{route="${route}",method="${method}",status_code="${statusCode}",le="+Inf"} ${sizes.length}`);
-      lines.push(`verinode_http_response_size_bytes_sum{route="${route}",method="${method}",status_code="${statusCode}"} ${sizeSum}`);
-      lines.push(`verinode_http_response_size_bytes_count{route="${route}",method="${method}",status_code="${statusCode}"} ${sizes.length}`);
+      lines.push(
+        `verinode_http_response_size_bytes_bucket{route="${route}",method="${method}",status_code="${statusCode}",le="+Inf"} ${sizes.length}`,
+      );
+      lines.push(
+        `verinode_http_response_size_bytes_sum{route="${route}",method="${method}",status_code="${statusCode}"} ${sizeSum}`,
+      );
+      lines.push(
+        `verinode_http_response_size_bytes_count{route="${route}",method="${method}",status_code="${statusCode}"} ${sizes.length}`,
+      );
     }
 
     return lines.join('\n');
@@ -449,13 +474,10 @@ export class PrometheusMetrics {
         const route = req.route?.path ?? req.path ?? req.url.split('?')[0];
         const method = req.method.toUpperCase();
         const statusCode = String(res.statusCode);
-        const responseSizeBytes = Number(
-          res.getHeader('content-length') ?? 0,
-        );
+        const responseSizeBytes = Number(res.getHeader('content-length') ?? 0);
 
         const traceId = currentTraceId();
-        const exemplar: Exemplar | undefined =
-          traceId ? { traceId, value: durationS } : undefined;
+        const exemplar: Exemplar | undefined = traceId ? { traceId, value: durationS } : undefined;
 
         httpCollector.record({
           route,
@@ -467,9 +489,6 @@ export class PrometheusMetrics {
         });
       });
 
-      next();
-    };
-  }
 
   /**
    * Express handler for GET /metrics

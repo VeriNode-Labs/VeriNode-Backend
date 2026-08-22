@@ -54,7 +54,10 @@ export interface BackupVerificationAlert {
 
 export type AlertSink = (alert: BackupVerificationAlert) => Promise<void> | void;
 
-export async function persistBackupVerificationResult(database: Queryable, result: BackupVerificationResult): Promise<void> {
+export async function persistBackupVerificationResult(
+  database: Queryable,
+  result: BackupVerificationResult,
+): Promise<void> {
   await database.query(
     `INSERT INTO database_backup_verifications
        (verification_id, backup_id, checked_at, status, severity, duration_ms, findings)
@@ -103,7 +106,10 @@ export function createVerificationId(manifest: BackupManifest, checkedAt: Date):
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, checkName: string): Promise<T> {
   let timeout: NodeJS.Timeout | undefined;
   const timeoutPromise = new Promise<T>((_, reject) => {
-    timeout = setTimeout(() => reject(new Error(`restore check timed out: ${checkName}`)), timeoutMs);
+    timeout = setTimeout(
+      () => reject(new Error(`restore check timed out: ${checkName}`)),
+      timeoutMs,
+    );
   });
   return Promise.race([promise, timeoutPromise]).finally(() => {
     if (timeout) clearTimeout(timeout);
@@ -117,7 +123,10 @@ export class BackupVerificationService {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  async verify(manifest: BackupManifest, restoredDatabase: Queryable): Promise<BackupVerificationResult> {
+  async verify(
+    manifest: BackupManifest,
+    restoredDatabase: Queryable,
+  ): Promise<BackupVerificationResult> {
     const started = performance.now();
     const checkedAt = this.now();
     const findings: string[] = [];
@@ -171,19 +180,35 @@ export class BackupVerificationService {
 
   private validateManifest(manifest: BackupManifest, checkedAt: Date, findings: string[]): void {
     if (!manifest.backupId.trim()) findings.push('backup id is empty');
-    if (manifest.completedAt.getTime() > checkedAt.getTime()) findings.push('backup completion time is in the future');
-    if (checkedAt.getTime() - manifest.completedAt.getTime() > this.policy.maxBackupAgeMs) findings.push('backup is older than policy allows');
-    if (manifest.objectCount < this.policy.minObjectCount) findings.push('backup object count is below policy minimum');
-    if (manifest.sizeBytes < this.policy.minSizeBytes) findings.push('backup size is below policy minimum');
-    if (this.policy.requiredSchemaVersion !== 'latest' && manifest.schemaVersion !== this.policy.requiredSchemaVersion) findings.push('backup schema version does not match required version');
-    if (!/^[a-f0-9]{32,128}$/i.test(manifest.checksum)) findings.push('backup checksum is missing or invalid');
+    if (manifest.completedAt.getTime() > checkedAt.getTime())
+      findings.push('backup completion time is in the future');
+    if (checkedAt.getTime() - manifest.completedAt.getTime() > this.policy.maxBackupAgeMs)
+      findings.push('backup is older than policy allows');
+    if (manifest.objectCount < this.policy.minObjectCount)
+      findings.push('backup object count is below policy minimum');
+    if (manifest.sizeBytes < this.policy.minSizeBytes)
+      findings.push('backup size is below policy minimum');
+    if (
+      this.policy.requiredSchemaVersion !== 'latest' &&
+      manifest.schemaVersion !== this.policy.requiredSchemaVersion
+    )
+      findings.push('backup schema version does not match required version');
+    if (!/^[a-f0-9]{32,128}$/i.test(manifest.checksum))
+      findings.push('backup checksum is missing or invalid');
   }
 
   private async runRestoreChecks(restoredDatabase: Queryable, findings: string[]): Promise<void> {
     for (const check of this.policy.restoreChecks) {
       try {
-        const result = await withTimeout(restoredDatabase.query(check.sql), check.timeoutMs ?? 10_000, check.name);
-        if (typeof check.expectedRows === 'number' && (result.rowCount ?? result.rows.length) !== check.expectedRows) {
+        const result = await withTimeout(
+          restoredDatabase.query(check.sql),
+          check.timeoutMs ?? 10_000,
+          check.name,
+        );
+        if (
+          typeof check.expectedRows === 'number' &&
+          (result.rowCount ?? result.rows.length) !== check.expectedRows
+        ) {
           findings.push(`${check.name}: expected ${check.expectedRows} rows`);
         }
       } catch (err) {

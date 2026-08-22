@@ -11,11 +11,15 @@ import {
   validateServiceMeshConfig,
 } from '../src/security/mtls';
 
+import * as forge from 'node-forge';
+
 function createCert(workdir: string, spiffeId: string, days = 1) {
   const key = join(workdir, 'tls.key');
   const cert = join(workdir, 'tls.crt');
   const config = join(workdir, 'openssl.cnf');
-  writeFileSync(config, `
+  writeFileSync(
+    config,
+    `
 [req]
 distinguished_name=req_distinguished_name
 x509_extensions=v3_req
@@ -24,17 +28,37 @@ prompt=no
 CN=verinode-backend
 [v3_req]
 subjectAltName=URI:${spiffeId}
-`);
-  execFileSync('openssl', [
-    'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', String(days),
-    '-keyout', key, '-out', cert, '-config', config,
-  ], { stdio: 'ignore' });
+`,
+  );
+  execFileSync(
+    'openssl',
+    [
+      'req',
+      '-x509',
+      '-newkey',
+      'rsa:2048',
+      '-nodes',
+      '-days',
+      String(days),
+      '-keyout',
+      key,
+      '-out',
+      cert,
+      '-config',
+      config,
+    ],
+    { stdio: 'ignore' },
+  );
   return { key, cert, ca: cert };
 }
 
 function withTempDir(fn: (dir: string) => void) {
   const dir = mkdtempSync(join(tmpdir(), 'verinode-mtls-'));
-  try { fn(dir); } finally { rmSync(dir, { recursive: true, force: true }); }
+  try {
+    fn(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 withTempDir((dir) => {
@@ -65,22 +89,35 @@ withTempDir((dir) => {
 });
 
 assert.deepEqual(
-  extractSpiffeIds({ subjectaltname: 'DNS:example, URI:spiffe://cluster.local/ns/verinode/sa/api' } as any),
+  extractSpiffeIds({
+    subjectaltname: 'DNS:example, URI:spiffe://cluster.local/ns/verinode/sa/api',
+  } as any),
   ['spiffe://cluster.local/ns/verinode/sa/api'],
 );
-assert.equal(validateSpiffeIdentity(['spiffe://cluster.local/ns/verinode/sa/api'], 'cluster.local', []), true);
-assert.equal(validateSpiffeIdentity(['spiffe://evil.local/ns/verinode/sa/api'], 'cluster.local', []), false);
 assert.equal(
-  validateSpiffeIdentity(
-    ['spiffe://cluster.local/ns/verinode/sa/api'],
-    'cluster.local',
-    ['spiffe://cluster.local/ns/verinode/sa/worker'],
-  ),
+  validateSpiffeIdentity(['spiffe://cluster.local/ns/verinode/sa/api'], 'cluster.local', []),
+  true,
+);
+assert.equal(
+  validateSpiffeIdentity(['spiffe://evil.local/ns/verinode/sa/api'], 'cluster.local', []),
+  false,
+);
+assert.equal(
+  validateSpiffeIdentity(['spiffe://cluster.local/ns/verinode/sa/api'], 'cluster.local', [
+    'spiffe://cluster.local/ns/verinode/sa/worker',
+  ]),
   false,
 );
 
-assert.equal(mtlsConfigFromEnv({ VERINODE_MTLS_ENABLED: '1', SPIFFE_ALLOWED_IDS: 'a,b' } as any).enabled, true);
-assert.deepEqual(mtlsConfigFromEnv({ VERINODE_MTLS_ENABLED: '1', SPIFFE_ALLOWED_IDS: 'a,b' } as any).allowedSpiffeIds, ['a', 'b']);
+assert.equal(
+  mtlsConfigFromEnv({ VERINODE_MTLS_ENABLED: '1', SPIFFE_ALLOWED_IDS: 'a,b' } as any).enabled,
+  true,
+);
+assert.deepEqual(
+  mtlsConfigFromEnv({ VERINODE_MTLS_ENABLED: '1', SPIFFE_ALLOWED_IDS: 'a,b' } as any)
+    .allowedSpiffeIds,
+  ['a', 'b'],
+);
 
 const meshIssues = validateServiceMeshConfig({
   enabled: true,

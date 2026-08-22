@@ -1,5 +1,10 @@
 import assert from 'assert';
-import { BackupManifest, BackupVerificationService, persistBackupVerificationResult, Queryable } from '../../src/database/backup_verification';
+import {
+  BackupManifest,
+  BackupVerificationService,
+  persistBackupVerificationResult,
+  Queryable,
+} from '../../src/database/backup_verification';
 
 class FakeDb implements Queryable {
   constructor(private readonly responses: Array<{ rows: any[]; rowCount?: number } | Error>) {}
@@ -69,9 +74,23 @@ async function alertsOnStaleBackupAndRestoreFailure() {
   await passesFreshRestore();
   await alertsOnStaleBackupAndRestoreFailure();
   const writes: any[] = [];
-  await persistBackupVerificationResult({ query: async (_sql, params) => { writes.push(params); return { rows: [], rowCount: 1 }; } }, {
-    verificationId: 'v1', backupId: 'b1', checkedAt: now, status: 'passed', severity: 'info', durationMs: 1, findings: [],
-  });
+  await persistBackupVerificationResult(
+    {
+      query: async (_sql, params) => {
+        writes.push(params);
+        return { rows: [], rowCount: 1 };
+      },
+    },
+    {
+      verificationId: 'v1',
+      backupId: 'b1',
+      checkedAt: now,
+      status: 'passed',
+      severity: 'info',
+      durationMs: 1,
+      findings: [],
+    },
+  );
   assert.equal(writes.length, 1);
   console.log('backup_verification tests passed');
 })();

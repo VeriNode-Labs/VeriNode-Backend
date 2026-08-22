@@ -6,9 +6,10 @@ export class RewardLockTimeoutError extends Error {
   constructor(nodeId: string, cause?: unknown) {
     super(`Timed out acquiring reward distribution lock for node ${nodeId}`);
     this.name = 'RewardLockTimeoutError';
-    this.code = typeof cause === 'object' && cause !== null && 'code' in cause
-      ? String((cause as { code?: unknown }).code)
-      : undefined;
+    this.code =
+      typeof cause === 'object' && cause !== null && 'code' in cause
+        ? String((cause as { code?: unknown }).code)
+        : undefined;
   }
 }
 
@@ -20,7 +21,10 @@ export function isLockTimeoutError(error: unknown): boolean {
   if (error instanceof RewardLockTimeoutError) return true;
   if (typeof error !== 'object' || error === null) return false;
   const err = error as { code?: unknown; message?: unknown };
-  return err.code === '55P03' || (typeof err.message === 'string' && err.message.toLowerCase().includes('lock timeout'));
+  return (
+    err.code === '55P03' ||
+    (typeof err.message === 'string' && err.message.toLowerCase().includes('lock timeout'))
+  );
 }
 
 interface Queryable {

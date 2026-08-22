@@ -23,28 +23,28 @@ export const mtlsSchema: JSONSchema7 = {
     keyFile: { type: 'string' },
     caFile: { type: 'string' },
     trustDomain: { type: 'string', default: 'cluster.local' },
-    allowedSpiffeIds: { 
-      type: 'array', 
+    allowedSpiffeIds: {
+      type: 'array',
       items: { type: 'string' },
-      default: []
+      default: [],
     },
-    certMaxValidityMs: { 
-      type: 'integer', 
-      minimum: 1, 
-      maximum: 86400000, 
-      default: 86400000 // 24 hours
+    certMaxValidityMs: {
+      type: 'integer',
+      minimum: 1,
+      maximum: 86400000,
+      default: 86400000, // 24 hours
     },
-    minSecondsUntilExpiry: { 
-      type: 'integer', 
-      minimum: 1, 
-      maximum: 86400, 
-      default: 3600 
+    minSecondsUntilExpiry: {
+      type: 'integer',
+      minimum: 1,
+      maximum: 86400,
+      default: 3600,
     },
-    reloadPollMs: { 
-      type: 'integer', 
-      minimum: 10000, 
-      maximum: 300000, 
-      default: 30000 
+    reloadPollMs: {
+      type: 'integer',
+      minimum: 10000,
+      maximum: 300000,
+      default: 30000,
     },
   },
   required: ['enabled'],
@@ -60,16 +60,21 @@ export const tlsSchema: JSONSchema7 = {
         domains: {
           type: 'array',
           items: { type: 'string' },
-          default: []
+          default: [],
         },
         email: { type: 'string' },
         directoryUrl: { type: 'string', default: 'https://acme-v02.api.letsencrypt.org/directory' },
         termsOfServiceAgreed: { type: 'boolean', default: false },
         renewBeforeDays: { type: 'integer', minimum: 1, maximum: 90, default: 30 },
         emergencyNotifyDays: { type: 'integer', minimum: 1, maximum: 30, default: 7 },
-        checkIntervalMs: { type: 'integer', minimum: 3600000, maximum: 86400000, default: 86400000 },
+        checkIntervalMs: {
+          type: 'integer',
+          minimum: 3600000,
+          maximum: 86400000,
+          default: 86400000,
+        },
       },
-      required: ['enabled']
+      required: ['enabled'],
     },
     certPath: { type: 'string' },
     keyPath: { type: 'string' },
@@ -90,25 +95,25 @@ export const telemetrySchema: JSONSchema7 = {
         serviceName: { type: 'string', default: 'verinode-backend' },
         samplingRatio: { type: 'number', minimum: 0, maximum: 1, default: 1.0 },
       },
-      required: ['enabled']
-    }
+      required: ['enabled'],
+    },
   },
-  required: ['otel']
+  required: ['otel'],
 };
 
 export const appSchema: JSONSchema7 = {
   type: 'object',
   properties: {
     port: { type: 'integer', minimum: 1, maximum: 65535, default: 3000 },
-    environment: { 
-      type: 'string', 
-      enum: ['development', 'production', 'test'], 
-      default: 'development' 
+    environment: {
+      type: 'string',
+      enum: ['development', 'production', 'test'],
+      default: 'development',
     },
-    logLevel: { 
-      type: 'string', 
-      enum: ['debug', 'info', 'warn', 'error'], 
-      default: 'info' 
+    logLevel: {
+      type: 'string',
+      enum: ['debug', 'info', 'warn', 'error'],
+      default: 'info',
     },
   },
   required: ['port', 'environment', 'logLevel'],
@@ -133,14 +138,14 @@ export const remoteSchema: JSONSchema7 = {
         endpoints: {
           type: 'array',
           items: { type: 'string', format: 'uri' },
-          default: ['http://localhost:2379']
+          default: ['http://localhost:2379'],
         },
         username: { type: 'string' },
         password: { type: 'string' },
         keyPrefix: { type: 'string', default: 'verinode/config' },
         watchIntervalMs: { type: 'integer', minimum: 1000, maximum: 60000, default: 10000 },
       },
-      required: ['enabled']
+      required: ['enabled'],
     },
     consul: {
       type: 'object',
@@ -151,9 +156,9 @@ export const remoteSchema: JSONSchema7 = {
         keyPrefix: { type: 'string', default: 'verinode/config' },
         watchIntervalMs: { type: 'integer', minimum: 1000, maximum: 60000, default: 10000 },
       },
-      required: ['enabled']
-    }
-  }
+      required: ['enabled'],
+    },
+  },
 };
 
 export const mainSchema: JSONSchema7 = {
@@ -170,72 +175,72 @@ export const mainSchema: JSONSchema7 = {
     staking: stakingSchema,
     remote: remoteSchema,
     feature_flags: {
-    type: 'object',
-    properties: {
-      overrides: {
-        type: 'object',
-        additionalProperties: {
-          type: 'string',
-          enum: ['enabled', 'disabled', 'degraded'],
+      type: 'object',
+      properties: {
+        overrides: {
+          type: 'object',
+          additionalProperties: {
+            type: 'string',
+            enum: ['enabled', 'disabled', 'degraded'],
+          },
+          default: {},
         },
-        default: {},
       },
+      default: {},
     },
-    default: {},
-  },
     capacity_shedding: {
-    type: 'object',
-    properties: {
-      enabled: { type: 'boolean', default: true },
-      checkIntervalMs: { type: 'integer', minimum: 1000, maximum: 60000, default: 5000 },
-      cooldownPeriodMs: { type: 'integer', minimum: 5000, maximum: 300000, default: 30000 },
-      thresholds: {
-        type: 'object',
-        properties: {
-          light: {
-            type: 'object',
-            properties: {
-              cpuPercent: { type: 'integer', minimum: 0, maximum: 100, default: 70 },
-              memoryPercent: { type: 'integer', minimum: 0, maximum: 100, default: 75 },
-              requestRatePerSec: { type: 'integer', minimum: 0, default: 800 },
-              p99LatencyMs: { type: 'integer', minimum: 0, default: 500 },
+      type: 'object',
+      properties: {
+        enabled: { type: 'boolean', default: true },
+        checkIntervalMs: { type: 'integer', minimum: 1000, maximum: 60000, default: 5000 },
+        cooldownPeriodMs: { type: 'integer', minimum: 5000, maximum: 300000, default: 30000 },
+        thresholds: {
+          type: 'object',
+          properties: {
+            light: {
+              type: 'object',
+              properties: {
+                cpuPercent: { type: 'integer', minimum: 0, maximum: 100, default: 70 },
+                memoryPercent: { type: 'integer', minimum: 0, maximum: 100, default: 75 },
+                requestRatePerSec: { type: 'integer', minimum: 0, default: 800 },
+                p99LatencyMs: { type: 'integer', minimum: 0, default: 500 },
+              },
+              default: {},
             },
-            default: {},
-          },
-          medium: {
-            type: 'object',
-            properties: {
-              cpuPercent: { type: 'integer', minimum: 0, maximum: 100, default: 85 },
-              memoryPercent: { type: 'integer', minimum: 0, maximum: 100, default: 85 },
-              requestRatePerSec: { type: 'integer', minimum: 0, default: 1200 },
-              p99LatencyMs: { type: 'integer', minimum: 0, default: 1000 },
+            medium: {
+              type: 'object',
+              properties: {
+                cpuPercent: { type: 'integer', minimum: 0, maximum: 100, default: 85 },
+                memoryPercent: { type: 'integer', minimum: 0, maximum: 100, default: 85 },
+                requestRatePerSec: { type: 'integer', minimum: 0, default: 1200 },
+                p99LatencyMs: { type: 'integer', minimum: 0, default: 1000 },
+              },
+              default: {},
             },
-            default: {},
-          },
-          critical: {
-            type: 'object',
-            properties: {
-              cpuPercent: { type: 'integer', minimum: 0, maximum: 100, default: 95 },
-              memoryPercent: { type: 'integer', minimum: 0, maximum: 100, default: 95 },
-              requestRatePerSec: { type: 'integer', minimum: 0, default: 2000 },
-              p99LatencyMs: { type: 'integer', minimum: 0, default: 3000 },
+            critical: {
+              type: 'object',
+              properties: {
+                cpuPercent: { type: 'integer', minimum: 0, maximum: 100, default: 95 },
+                memoryPercent: { type: 'integer', minimum: 0, maximum: 100, default: 95 },
+                requestRatePerSec: { type: 'integer', minimum: 0, default: 2000 },
+                p99LatencyMs: { type: 'integer', minimum: 0, default: 3000 },
+              },
+              default: {},
             },
-            default: {},
           },
+          default: {},
         },
-        default: {},
-      },
-      flagsToShed: {
-        type: 'object',
-        additionalProperties: {
-          type: 'string',
-          enum: ['enabled', 'disabled', 'degraded'],
+        flagsToShed: {
+          type: 'object',
+          additionalProperties: {
+            type: 'string',
+            enum: ['enabled', 'disabled', 'degraded'],
+          },
+          default: {},
         },
-        default: {},
       },
+      default: {},
     },
-    default: {},
-  },
   },
   additionalProperties: false,
   required: ['db', 'app'],

@@ -1,10 +1,5 @@
 export type ChaosFaultType =
-  | 'latency'
-  | 'packet-loss'
-  | 'pod-kill'
-  | 'dependency-error'
-  | 'cpu-pressure'
-  | 'clock-skew';
+  'latency' | 'packet-loss' | 'pod-kill' | 'dependency-error' | 'cpu-pressure' | 'clock-skew';
 
 export interface ChaosScenario {
   name: string;
@@ -78,20 +73,35 @@ export function validateChaosBlueprint(blueprint: ChaosBlueprint): ValidationRes
   }
 
   if (blueprint.availabilityTargetPercent < 99.99) {
-    findings.push({ scenario: 'blueprint', message: 'availability target must be at least 99.99%' });
+    findings.push({
+      scenario: 'blueprint',
+      message: 'availability target must be at least 99.99%',
+    });
   }
 
   if (blueprint.criticalPathP99LatencyMs > 100) {
-    findings.push({ scenario: 'blueprint', message: 'critical path P99 latency target must be <= 100ms' });
+    findings.push({
+      scenario: 'blueprint',
+      message: 'critical path P99 latency target must be <= 100ms',
+    });
   }
 
   for (const scenario of blueprint.scenarios) {
-    if (scenario.blastRadiusPercent <= 0 || scenario.blastRadiusPercent > blueprint.maxBlastRadiusPercent) {
-      findings.push({ scenario: scenario.name, message: 'blast radius exceeds the approved staging guardrail' });
+    if (
+      scenario.blastRadiusPercent <= 0 ||
+      scenario.blastRadiusPercent > blueprint.maxBlastRadiusPercent
+    ) {
+      findings.push({
+        scenario: scenario.name,
+        message: 'blast radius exceeds the approved staging guardrail',
+      });
     }
 
     if (scenario.durationSeconds <= 0 || scenario.durationSeconds > 900) {
-      findings.push({ scenario: scenario.name, message: 'duration must be between 1 and 900 seconds' });
+      findings.push({
+        scenario: scenario.name,
+        message: 'duration must be between 1 and 900 seconds',
+      });
     }
 
     if (!scenario.steadyStateProbe.trim()) {
@@ -113,6 +123,7 @@ export function summarizeChaosReadiness(blueprint: ChaosBlueprint): string[] {
   }
 
   return blueprint.scenarios.map(
-    (scenario) => `${scenario.name} targets ${scenario.service} with ${scenario.fault} at ${scenario.blastRadiusPercent}% blast radius for ${scenario.durationSeconds}s`,
+    (scenario) =>
+      `${scenario.name} targets ${scenario.service} with ${scenario.fault} at ${scenario.blastRadiusPercent}% blast radius for ${scenario.durationSeconds}s`,
   );
 }

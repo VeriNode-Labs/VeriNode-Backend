@@ -1,10 +1,27 @@
-export { mainSchema, databaseSchema, mtlsSchema, tlsSchema, telemetrySchema, appSchema, stakingSchema, remoteSchema } from './schema';
+export {
+  mainSchema,
+  databaseSchema,
+  mtlsSchema,
+  tlsSchema,
+  telemetrySchema,
+  appSchema,
+  stakingSchema,
+  remoteSchema,
+} from './schema';
 export { ConfigValidationError, ValidationResult, ConfigValidator } from './validator';
 export { ConfigEvent, ConfigEventPayload, ConfigEventBus, configEventBus } from './eventbus';
 export { ConfigSource, ConfigLoader } from './loader';
 export { ConfigManager, ConfigChangeCallback, getConfigManager } from './manager';
 export { mergeConfigs, normalizeEnvKey, flattenToEnv } from './validator';
-export { deepClone, deepMerge, getIn, setIn, deleteIn, parseEnvValue, formatErrorPath } from './utils';
+export {
+  deepClone,
+  deepMerge,
+  getIn,
+  setIn,
+  deleteIn,
+  parseEnvValue,
+  formatErrorPath,
+} from './utils';
 
 import { getConfigManager } from './manager';
 import { ConfigValidationError } from './validator';
@@ -48,7 +65,10 @@ export function getConfigValue(path: string | string[]): any {
 /**
  * Subscribe to configuration changes
  */
-export function onConfigChange(callback: (oldConfig: any, newConfig: any) => void, id?: string): string {
+export function onConfigChange(
+  callback: (oldConfig: any, newConfig: any) => void,
+  id?: string,
+): string {
   const manager = getConfigManager();
   return manager.onChange(callback, id);
 }
