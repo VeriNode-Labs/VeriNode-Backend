@@ -1,8 +1,8 @@
 /**
  * VeriNode Backend — Metrics Module
  *
- * Re-exports the Prometheus metrics singleton, the registry, and
- * the MetricsMiddleware from a single entry point.
+ * Re-exports the Prometheus metrics singleton and the registry
+ * from a single entry point.
  */
 
 export { PrometheusMetrics, prometheusMetrics } from './prometheus';

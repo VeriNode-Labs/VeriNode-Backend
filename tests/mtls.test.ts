@@ -11,6 +11,8 @@ import {
   validateServiceMeshConfig,
 } from '../src/security/mtls';
 
+import * as forge from 'node-forge';
+
 function createCert(workdir: string, spiffeId: string, days = 1) {
   const key = join(workdir, 'tls.key');
   const cert = join(workdir, 'tls.crt');

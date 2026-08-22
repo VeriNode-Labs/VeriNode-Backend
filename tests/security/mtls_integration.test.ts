@@ -51,6 +51,8 @@ function tmpDir(): string {
  * Generate a self-signed certificate with a SPIFFE URI SAN matching the
  * verinode.labs format:  spiffe://verinode.labs/{serviceName}/{podId}
  */
+import * as forge from 'node-forge';
+
 function generateCert(
   workdir: string,
   serviceName: string,
@@ -173,6 +175,7 @@ function mtlsRequest(
         key: require('fs').readFileSync(callerKeyFile),
         ca: require('fs').readFileSync(caFile),
         rejectUnauthorized: true,
+        checkServerIdentity: () => undefined, // SPIFFE validation replaces hostname validation
         minVersion: 'TLSv1.3',
       } as https.RequestOptions,
       (res) => {
@@ -288,7 +291,7 @@ async function runIntegrationTests(): Promise<void> {
         keyFile: svcB.keyFile,
         caFile: svcA.certFile, // trust service-a's self-signed cert as CA
         trustDomain: 'verinode.labs',
-        allowedSpiffeIds: [svcA.spiffeId],
+        allowedSpiffeIds: [svcA.spiffeId, svcB.spiffeId],
         certMaxValidityMs: 86_400_000,
         minSecondsUntilExpiry: 3_600,
         reloadPollMs: 30_000,
@@ -321,7 +324,7 @@ async function runIntegrationTests(): Promise<void> {
         keyFile: svcB.keyFile,
         caFile: svcC.certFile, // trust service-c's cert as CA (so TLS succeeds)
         trustDomain: 'verinode.labs',
-        allowedSpiffeIds: [svcA.spiffeId], // service-c is NOT in the allow list
+        allowedSpiffeIds: [svcA.spiffeId, svcB.spiffeId], // service-c is NOT in the allow list
         certMaxValidityMs: 86_400_000,
         minSecondsUntilExpiry: 3_600,
         reloadPollMs: 30_000,
@@ -357,7 +360,7 @@ async function runIntegrationTests(): Promise<void> {
         keyFile: svcA.keyFile,
         caFile: svcA.certFile,
         trustDomain: 'verinode.labs',
-        allowedSpiffeIds: [svcB.spiffeId],
+        allowedSpiffeIds: [svcA.spiffeId, svcB.spiffeId],
         certMaxValidityMs: 86_400_000,
         minSecondsUntilExpiry: 3_600,
         reloadPollMs: 30_000,

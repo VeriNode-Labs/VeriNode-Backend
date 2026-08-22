@@ -489,9 +489,6 @@ export class PrometheusMetrics {
         });
       });
 
-      next();
-    };
-  }
 
   /**
    * Express handler for GET /metrics
