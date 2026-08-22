@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc",
     "ci:validate-workflow": "node scripts/validate-ci-workflow.cjs",
-    "test": "npx ts-node --project tsconfig.json tests/config.test.ts && npx ts-node --project tsconfig.json tests/slashing_sequencer.test.ts && npx ts-node --project tsconfig.json tests/notifications/slashingNotifier.test.ts && npx ts-node --project tsconfig.json tests/staking/bondPool.test.ts && npx ts-node --project tsconfig.json tests/uptime_queries.test.ts && npx ts-node --project tsconfig.json tests/tracer.test.ts && npx ts-node --project tsconfig.json tests/pool_isolation.test.ts && npx ts-node --project tsconfig.json tests/mtls.test.ts && npx ts-node --project tsconfig.json tests/security/mtls_integration.test.ts && npx ts-node --project tsconfig.json tests/tls_rotation.test.ts && npx ts-node --project tsconfig.json tests/reputation/scoreService.test.ts && npx ts-node --project tsconfig.json tests/rewards/distributor.test.ts && npx ts-node --project tsconfig.json tests/blockchain/preflight_analyzer.test.ts && npx ts-node --project tsconfig.json tests/blockchain/rpc_client.test.ts && npx ts-node --project tsconfig.json tests/blockchain/transaction_builder.test.ts && npx ts-node --project tsconfig.json tests/state_archival.test.ts && npx ts-node --project tsconfig.json tests/dead_letter_queue.test.ts && npx ts-node --project tsconfig.json tests/config-drift.test.ts && npx ts-node --project tsconfig.json tests/rate_limiter.test.ts && TS_NODE_TRANSPILE_ONLY=true npx ts-node --project tsconfig.json tests/core/attestation/engine_extra.test.ts",
+    "test": "node scripts/test_runner.js",
     "test:consensus-sim": "npx ts-node --project tsconfig.json tests/consensus_sim.test.ts",
     "test:reputation": "npx ts-node --project tsconfig.json tests/reputation/scoreService.test.ts",
     "clean": "rm -rf dist",
@@ -49,9 +49,12 @@
     "@types/express": "^5.0.6",
     "@types/json-schema": "^7.0.15",
     "@types/node": "^22.0.0",
+    "@types/node-forge": "^1.3.14",
     "@types/pg": "^8.20.0",
     "c8": "^11.0.0",
+    "node-forge": "^1.4.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.11"
   }
 }

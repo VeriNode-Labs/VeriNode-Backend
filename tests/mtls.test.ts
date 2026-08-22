@@ -11,25 +11,37 @@ import {
   validateServiceMeshConfig,
 } from '../src/security/mtls';
 
+import * as forge from 'node-forge';
+
 function createCert(workdir: string, spiffeId: string, days = 1) {
-  const key = join(workdir, 'tls.key');
-  const cert = join(workdir, 'tls.crt');
-  const config = join(workdir, 'openssl.cnf');
-  writeFileSync(config, `
-[req]
-distinguished_name=req_distinguished_name
-x509_extensions=v3_req
-prompt=no
-[req_distinguished_name]
-CN=verinode-backend
-[v3_req]
-subjectAltName=URI:${spiffeId}
-`);
-  execFileSync('openssl', [
-    'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', String(days),
-    '-keyout', key, '-out', cert, '-config', config,
-  ], { stdio: 'ignore' });
-  return { key, cert, ca: cert };
+  const keyFile = join(workdir, 'tls.key');
+  const certFile = join(workdir, 'tls.crt');
+
+  const keys = forge.pki.rsa.generateKeyPair(2048);
+  const cert = forge.pki.createCertificate();
+  cert.publicKey = keys.publicKey;
+  cert.serialNumber = Math.floor(Math.random() * 1000000).toString() + Date.now().toString();
+  cert.validity.notBefore = new Date();
+  cert.validity.notAfter = new Date();
+  cert.validity.notAfter.setDate(cert.validity.notBefore.getDate() + days);
+
+  const attrs = [{ name: 'commonName', value: 'verinode-backend' }];
+  cert.setSubject(attrs);
+  cert.setIssuer(attrs);
+
+  cert.setExtensions([
+    { name: 'subjectAltName', altNames: [{ type: 6, value: spiffeId }] }
+  ]);
+
+  cert.sign(keys.privateKey);
+
+  const pemCert = forge.pki.certificateToPem(cert);
+  const pemKey = forge.pki.privateKeyToPem(keys.privateKey);
+
+  writeFileSync(certFile, pemCert);
+  writeFileSync(keyFile, pemKey);
+
+  return { key: keyFile, cert: certFile, ca: certFile };
 }
 
 function withTempDir(fn: (dir: string) => void) {

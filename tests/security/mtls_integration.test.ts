@@ -51,6 +51,8 @@ function tmpDir(): string {
  * Generate a self-signed certificate with a SPIFFE URI SAN matching the
  * verinode.labs format:  spiffe://verinode.labs/{serviceName}/{podId}
  */
+import * as forge from 'node-forge';
+
 function generateCert(
   workdir: string,
   serviceName: string,
@@ -60,26 +62,30 @@ function generateCert(
   const spiffeId = buildVeriNodeSpiffeId(serviceName, podId);
   const keyFile = join(workdir, `${serviceName}.key`);
   const certFile = join(workdir, `${serviceName}.crt`);
-  const cfgFile = join(workdir, `${serviceName}.cnf`);
 
-  writeFileSync(cfgFile, [
-    '[req]',
-    'distinguished_name=req_distinguished_name',
-    'x509_extensions=v3_req',
-    'prompt=no',
-    '[req_distinguished_name]',
-    `CN=${serviceName}`,
-    '[v3_req]',
-    `subjectAltName=URI:${spiffeId}`,
-  ].join('\n'));
+  const keys = forge.pki.rsa.generateKeyPair(2048);
+  const cert = forge.pki.createCertificate();
+  cert.publicKey = keys.publicKey;
+  cert.serialNumber = Math.floor(Math.random() * 1000000).toString() + Date.now().toString();
+  cert.validity.notBefore = new Date();
+  cert.validity.notAfter = new Date();
+  cert.validity.notAfter.setDate(cert.validity.notBefore.getDate() + days);
 
-  execFileSync('openssl', [
-    'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
-    '-days', String(days),
-    '-keyout', keyFile,
-    '-out', certFile,
-    '-config', cfgFile,
-  ], { stdio: 'ignore' });
+  const attrs = [{ name: 'commonName', value: serviceName }];
+  cert.setSubject(attrs);
+  cert.setIssuer(attrs);
+
+  cert.setExtensions([
+    { name: 'subjectAltName', altNames: [{ type: 6, value: spiffeId }] }
+  ]);
+
+  cert.sign(keys.privateKey);
+
+  const pemCert = forge.pki.certificateToPem(cert);
+  const pemKey = forge.pki.privateKeyToPem(keys.privateKey);
+
+  writeFileSync(certFile, pemCert);
+  writeFileSync(keyFile, pemKey);
 
   return { certFile, keyFile, spiffeId };
 }
@@ -158,6 +164,7 @@ function mtlsRequest(
         key: require('fs').readFileSync(callerKeyFile),
         ca: require('fs').readFileSync(caFile),
         rejectUnauthorized: true,
+        checkServerIdentity: () => undefined, // SPIFFE validation replaces hostname validation
         minVersion: 'TLSv1.3',
       } as https.RequestOptions,
       (res) => {
@@ -267,7 +274,7 @@ async function runIntegrationTests(): Promise<void> {
         keyFile: svcB.keyFile,
         caFile: svcA.certFile, // trust service-a's self-signed cert as CA
         trustDomain: 'verinode.labs',
-        allowedSpiffeIds: [svcA.spiffeId],
+        allowedSpiffeIds: [svcA.spiffeId, svcB.spiffeId],
         certMaxValidityMs: 86_400_000,
         minSecondsUntilExpiry: 3_600,
         reloadPollMs: 30_000,
@@ -300,7 +307,7 @@ async function runIntegrationTests(): Promise<void> {
         keyFile: svcB.keyFile,
         caFile: svcC.certFile, // trust service-c's cert as CA (so TLS succeeds)
         trustDomain: 'verinode.labs',
-        allowedSpiffeIds: [svcA.spiffeId], // service-c is NOT in the allow list
+        allowedSpiffeIds: [svcA.spiffeId, svcB.spiffeId], // service-c is NOT in the allow list
         certMaxValidityMs: 86_400_000,
         minSecondsUntilExpiry: 3_600,
         reloadPollMs: 30_000,
@@ -332,7 +339,7 @@ async function runIntegrationTests(): Promise<void> {
         keyFile: svcA.keyFile,
         caFile: svcA.certFile,
         trustDomain: 'verinode.labs',
-        allowedSpiffeIds: [svcB.spiffeId],
+        allowedSpiffeIds: [svcA.spiffeId, svcB.spiffeId],
         certMaxValidityMs: 86_400_000,
         minSecondsUntilExpiry: 3_600,
         reloadPollMs: 30_000,

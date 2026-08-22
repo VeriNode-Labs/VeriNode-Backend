@@ -62,12 +62,14 @@ export class ConfigValidator {
       errors.push({ path, message: `Value "${value}" not in enum [${schema.enum.join(', ')}]`, schema, value });
     }
 
-    if (schema.type === 'object' && schema.properties && value && typeof value === 'object' && !Array.isArray(value)) {
-      const allowed = new Set(Object.keys(schema.properties));
-      for (const [key, propSchema] of Object.entries(schema.properties)) {
-        const propPath = path ? `${path}.${key}` : key;
-        if (value[key] !== undefined) {
-          this.validateValue(value[key], propSchema as JSONSchema7, propPath, errors, warnings);
+    if (schema.type === 'object' && value && typeof value === 'object' && !Array.isArray(value)) {
+      const allowed = schema.properties ? new Set(Object.keys(schema.properties)) : new Set<string>();
+      if (schema.properties) {
+        for (const [key, propSchema] of Object.entries(schema.properties)) {
+          const propPath = path ? `${path}.${key}` : key;
+          if (value[key] !== undefined) {
+            this.validateValue(value[key], propSchema as JSONSchema7, propPath, errors, warnings);
+          }
         }
       }
 

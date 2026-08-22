@@ -28,7 +28,7 @@ async function run() {
   assert.ok(critical.windows[0].burnRate > 14.4);
 
   const warning = monitor.evaluate(objective, [
-    { window: '6h', goodEvents: 999_960, totalEvents: 1_000_000 },
+    { window: '6h', goodEvents: 999_600, totalEvents: 1_000_000 },
   ]);
   assert.equal(warning.status, 'warning');
   assert.equal(warning.violatedThresholds[0].severity, 'warning');

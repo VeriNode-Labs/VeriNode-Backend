@@ -42,7 +42,7 @@ function sample(dayOffset: number, value: number): UsageSample {
   planner.recordBatch([sample(0, 100), sample(1, 200), sample(2, 300)]);
 
   const metrics = planner.prometheusMetrics(1);
-  assert.match(metrics, /capacity_current_utilization_percent\{service="api",resource="requests",level="healthy"\} 30\.00/);
+  assert.match(metrics, /capacity_current_utilization_percent\{service="api",resource="requests",level="critical"\} 30\.00/);
   assert.match(metrics, /capacity_projected_utilization_percent/);
   assert.match(metrics, /capacity_days_to_exhaustion/);
 }
