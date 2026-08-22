@@ -1,6 +1,10 @@
 import assert from 'assert';
 import { randomBytes } from 'crypto';
-import { isEncryptedEnvelope, PayloadEncryptionService, StaticKeyProvider } from '../../src/security/payload_encryption';
+import {
+  isEncryptedEnvelope,
+  PayloadEncryptionService,
+  StaticKeyProvider,
+} from '../../src/security/payload_encryption';
 
 async function main(): Promise<void> {
   const service = new PayloadEncryptionService({

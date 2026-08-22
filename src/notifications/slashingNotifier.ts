@@ -1,9 +1,6 @@
 import { createHash } from 'crypto';
 import { EmailService } from './emailService';
-import {
-  NotificationChannel,
-  NotificationDeliveryStore,
-} from './deliveryStore';
+import { NotificationChannel, NotificationDeliveryStore } from './deliveryStore';
 import { WebhookService } from './webhookService';
 
 export interface SlashingEvent {
@@ -62,21 +59,23 @@ export class SlashingNotifier {
     const channelResults = await Promise.allSettled([
       this.deliverChannel(event, {
         channel: 'email',
-        send: (notificationId) => this.emailService.sendEmail({
-          notificationId,
-          to: event.operatorEmail,
-          subject: `Validator ${event.validatorId} slashed`,
-          body: this.emailBody(event),
-        }),
+        send: (notificationId) =>
+          this.emailService.sendEmail({
+            notificationId,
+            to: event.operatorEmail,
+            subject: `Validator ${event.validatorId} slashed`,
+            body: this.emailBody(event),
+          }),
       }),
       this.deliverChannel(event, {
         channel: 'webhook',
-        send: (notificationId) => this.webhookService.postWebhook({
-          notificationId,
-          url: event.webhookUrl,
-          timeoutMs: this.webhookTimeoutMs,
-          payload: this.webhookPayload(event, notificationId),
-        }),
+        send: (notificationId) =>
+          this.webhookService.postWebhook({
+            notificationId,
+            url: event.webhookUrl,
+            timeoutMs: this.webhookTimeoutMs,
+            payload: this.webhookPayload(event, notificationId),
+          }),
       }),
     ]);
 
@@ -116,7 +115,11 @@ export class SlashingNotifier {
 
     let lastError: unknown = null;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      const claimed = await this.deliveryStore.claimDelivery(event.id, config.channel, notificationId);
+      const claimed = await this.deliveryStore.claimDelivery(
+        event.id,
+        config.channel,
+        notificationId,
+      );
       if (!claimed) {
         return { channel: config.channel, status: 'skipped' };
       }

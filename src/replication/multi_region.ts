@@ -116,7 +116,9 @@ export class MultiRegionRecoveryCoordinator {
       const label = `{region="${this.escapeLabel(region.name)}",role="${region.role}",health="${region.health}"}`;
       lines.push(`verinode_region_replication_lag_ms${label} ${region.replicationLagMs}`);
       lines.push(`verinode_region_p99_latency_ms${label} ${region.p99LatencyMs}`);
-      lines.push(`verinode_region_heartbeat_age_ms${label} ${Math.max(0, this.now() - region.lastHeartbeatAt)}`);
+      lines.push(
+        `verinode_region_heartbeat_age_ms${label} ${Math.max(0, this.now() - region.lastHeartbeatAt)}`,
+      );
     }
 
     return `${lines.join('\n')}\n`;
@@ -133,17 +135,26 @@ export class MultiRegionRecoveryCoordinator {
   private findRegionRisks(region: RegionStatus): string[] {
     const reasons: string[] = [];
     if (region.health !== 'healthy') reasons.push(`primary health is ${region.health}`);
-    if (region.replicationLagMs > this.policy.maxReplicationLagMs) reasons.push(`replication lag ${region.replicationLagMs}ms exceeds ${this.policy.maxReplicationLagMs}ms`);
-    if (region.p99LatencyMs > this.policy.maxCriticalPathP99Ms) reasons.push(`p99 latency ${region.p99LatencyMs}ms exceeds ${this.policy.maxCriticalPathP99Ms}ms`);
-    if (this.now() - region.lastHeartbeatAt > this.policy.heartbeatTimeoutMs) reasons.push('primary heartbeat timed out');
+    if (region.replicationLagMs > this.policy.maxReplicationLagMs)
+      reasons.push(
+        `replication lag ${region.replicationLagMs}ms exceeds ${this.policy.maxReplicationLagMs}ms`,
+      );
+    if (region.p99LatencyMs > this.policy.maxCriticalPathP99Ms)
+      reasons.push(
+        `p99 latency ${region.p99LatencyMs}ms exceeds ${this.policy.maxCriticalPathP99Ms}ms`,
+      );
+    if (this.now() - region.lastHeartbeatAt > this.policy.heartbeatTimeoutMs)
+      reasons.push('primary heartbeat timed out');
     return reasons;
   }
 
   private isPromotionCandidate(region: RegionStatus): boolean {
-    return region.health === 'healthy'
-      && region.replicationLagMs <= this.policy.maxReplicationLagMs
-      && region.p99LatencyMs <= this.policy.maxCriticalPathP99Ms
-      && this.now() - region.lastHeartbeatAt <= this.policy.heartbeatTimeoutMs;
+    return (
+      region.health === 'healthy' &&
+      region.replicationLagMs <= this.policy.maxReplicationLagMs &&
+      region.p99LatencyMs <= this.policy.maxCriticalPathP99Ms &&
+      this.now() - region.lastHeartbeatAt <= this.policy.heartbeatTimeoutMs
+    );
   }
 
   private escapeLabel(value: string): string {

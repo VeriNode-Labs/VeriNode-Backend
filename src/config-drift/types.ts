@@ -1,7 +1,4 @@
-export type DriftCategory =
-  | 'value_change'
-  | 'key_added'
-  | 'key_removed';
+export type DriftCategory = 'value_change' | 'key_added' | 'key_removed';
 
 export interface DriftFinding {
   category: DriftCategory;
@@ -41,4 +38,3 @@ export interface ConfigDriftAlert {
   severity: 'critical' | 'warning';
   driftReport: DriftReport;
 }
-

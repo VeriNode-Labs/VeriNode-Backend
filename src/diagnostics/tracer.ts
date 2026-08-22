@@ -38,10 +38,7 @@ import {
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
 import { resourceFromAttributes } from '@opentelemetry/resources';
-import {
-  ATTR_SERVICE_NAME,
-  ATTR_SERVICE_VERSION,
-} from '@opentelemetry/semantic-conventions';
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import {
   BatchSpanProcessor,
   ParentBasedSampler,
@@ -118,14 +115,12 @@ export class ErrorLoggingSpanProcessor implements SpanProcessor {
       const traceId = span.spanContext().traceId;
       const spanId = span.spanContext().spanId;
       const name = span.name;
-      const messages = (span.events ?? [])
-        .map((e) => (e.name ?? '').toString())
-        .join(',');
+      const messages = (span.events ?? []).map((e) => (e.name ?? '').toString()).join(',');
       log.warn('Span status ERROR', {
-        'trace_id': traceId,
-        'span_id': spanId,
+        trace_id: traceId,
+        span_id: spanId,
         'span.name': name,
-        'events': messages,
+        events: messages,
         'code.filepath': 'src/diagnostics/tracer.ts',
       });
     }
@@ -196,15 +191,12 @@ function resolveServiceName(): string {
 }
 
 function resolveServiceVersion(): string {
-  return (
-    process.env.OTEL_SERVICE_VERSION?.trim() || readPackageVersion()
-  );
+  return process.env.OTEL_SERVICE_VERSION?.trim() || readPackageVersion();
 }
 
 function resolveSamplerRatio(): number {
   const raw =
-    process.env.OTEL_TRACES_SAMPLER_ARG?.trim() ||
-    process.env.OTEL_SAMPLING_RATIO?.trim();
+    process.env.OTEL_TRACES_SAMPLER_ARG?.trim() || process.env.OTEL_SAMPLING_RATIO?.trim();
   if (raw === undefined || raw === '') return DEFAULT_SAMPLER_RATIO;
   const f = parseFloat(raw);
   if (!Number.isFinite(f)) return DEFAULT_SAMPLER_RATIO;
@@ -343,7 +335,10 @@ export function initTracing(options: InitOptions = {}): TraceConfig | null {
  * reading from process.env. Compatible with the config system's
  * `getConfigValue('telemetry.otel')` shape.
  */
-export function initTracingFromConfig(otelConfig: OtelConfig, options: InitOptions = {}): TraceConfig | null {
+export function initTracingFromConfig(
+  otelConfig: OtelConfig,
+  options: InitOptions = {},
+): TraceConfig | null {
   if (initialized) {
     return getTraceConfig();
   }
@@ -473,7 +468,9 @@ export function isInitialized(): boolean {
  * Convenience: a no-op fallback processor list, useful for tests that
  * want to swap in InMemorySpanExporter without spinning up NodeSDK.
  */
-export function makeTestProcessorList(exporter: import('@opentelemetry/sdk-trace-base').SpanExporter): SpanProcessor[] {
+export function makeTestProcessorList(
+  exporter: import('@opentelemetry/sdk-trace-base').SpanExporter,
+): SpanProcessor[] {
   return [new SimpleSpanProcessor(exporter), new QueueDepthSpanProcessor()];
 }
 

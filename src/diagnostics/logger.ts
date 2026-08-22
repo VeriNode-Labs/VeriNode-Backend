@@ -90,8 +90,7 @@ let _serviceName: string | null = null;
 let _serviceVersion: string | null = null;
 
 const DUAL_WRITE_ENABLED = (): boolean =>
-  process.env.VERINODE_LOG_DUAL_WRITE === 'true' ||
-  process.env.VERINODE_LOG_DUAL_WRITE === '1';
+  process.env.VERINODE_LOG_DUAL_WRITE === 'true' || process.env.VERINODE_LOG_DUAL_WRITE === '1';
 
 /** Resolved once and cached. */
 function resolveServiceName(): string {
@@ -222,10 +221,7 @@ export class StructuredLogger {
    * Create a child logger scoped to a sub-module.
    * The child inherits the parent's base attributes merged with the new ones.
    */
-  child(
-    module: string,
-    attrs?: Record<string, string | number | boolean>,
-  ): StructuredLogger {
+  child(module: string, attrs?: Record<string, string | number | boolean>): StructuredLogger {
     return new StructuredLogger({
       module,
       attributes: { ...this._baseAttrs, ...attrs },
@@ -237,10 +233,15 @@ export class StructuredLogger {
     args: unknown[],
   ): { body: string; attrs: Record<string, string | number | boolean | undefined> } {
     const body = typeof message === 'string' ? message : String(message ?? '');
-    if (args.length === 1 && typeof args[0] === 'object' && args[0] !== null && !(args[0] instanceof Error)) {
+    if (
+      args.length === 1 &&
+      typeof args[0] === 'object' &&
+      args[0] !== null &&
+      !(args[0] instanceof Error)
+    ) {
       return { body, attrs: args[0] as Record<string, string | number | boolean | undefined> };
     }
-    let attrs: Record<string, string | number | boolean | undefined> = {};
+    const attrs: Record<string, string | number | boolean | undefined> = {};
     for (const arg of args) {
       if (arg instanceof Error) {
         attrs['error.message'] = arg.message;

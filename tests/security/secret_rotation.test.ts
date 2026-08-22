@@ -11,7 +11,11 @@ async function testSuccessfulRotation() {
     clock: () => now,
     versionIdFactory: () => `v${++sequence}`,
     generator: { generate: () => 'rotated-password' },
-    hooks: { apply: (_secret, version) => { applied.push(version.id); } },
+    hooks: {
+      apply: (_secret, version) => {
+        applied.push(version.id);
+      },
+    },
     canaryPercent: 10,
     rotationIntervalMs: 1000,
   });
@@ -43,7 +47,11 @@ async function testRollbackOnValidationFailure() {
     store,
     versionIdFactory: () => `v${++sequence}`,
     generator: { generate: () => 'bad-api-key' },
-    hooks: { validate: () => { throw new Error('synthetic validation failure'); } },
+    hooks: {
+      validate: () => {
+        throw new Error('synthetic validation failure');
+      },
+    },
   });
 
   await service.registerSecret('api/public', 'api_key', 'live-api-key');
@@ -60,16 +68,33 @@ async function testRollbackOnValidationFailure() {
 }
 
 async function testDueForRotation() {
-  let now = new Date('2026-01-01T00:00:00.000Z');
+  const now = new Date('2026-01-01T00:00:00.000Z');
   let sequence = 0;
   const store = new InMemorySecretStore();
-  const service = new SecretRotationService({ store, clock: () => now, versionIdFactory: () => `v${++sequence}` });
+  const service = new SecretRotationService({
+    store,
+    clock: () => now,
+    versionIdFactory: () => `v${++sequence}`,
+  });
 
-  await service.registerSecret('database/old', 'database', 'old', new Date('2025-12-31T00:00:00.000Z'));
-  await service.registerSecret('database/future', 'database', 'future', new Date('2026-02-01T00:00:00.000Z'));
+  await service.registerSecret(
+    'database/old',
+    'database',
+    'old',
+    new Date('2025-12-31T00:00:00.000Z'),
+  );
+  await service.registerSecret(
+    'database/future',
+    'database',
+    'future',
+    new Date('2026-02-01T00:00:00.000Z'),
+  );
 
   const due = await service.dueForRotation(now);
-  assert.deepEqual(due.map((secret) => secret.name), ['database/old']);
+  assert.deepEqual(
+    due.map((secret) => secret.name),
+    ['database/old'],
+  );
 }
 
 (async () => {

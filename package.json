@@ -10,7 +10,11 @@
     "test:consensus-sim": "npx ts-node --project tsconfig.json tests/consensus_sim.test.ts",
     "test:reputation": "npx ts-node --project tsconfig.json tests/reputation/scoreService.test.ts",
     "clean": "rm -rf dist",
-    "test:payload-encryption": "npx ts-node --project tsconfig.json tests/security/payload_encryption.test.ts"
+    "test:payload-encryption": "npx ts-node --project tsconfig.json tests/security/payload_encryption.test.ts",
+    "lint": "eslint \"{src,tests}/**/*.ts\"",
+    "lint:fix": "eslint \"{src,tests}/**/*.ts\" --fix",
+    "format": "prettier --write \"{src,tests}/**/*.ts\"",
+    "prepare": "husky install"
   },
   "repository": {
     "type": "git",
@@ -50,7 +54,15 @@
     "@types/json-schema": "^7.0.15",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.20.0",
+    "@typescript-eslint/eslint-plugin": "^8.67.0",
+    "@typescript-eslint/parser": "^8.67.0",
     "c8": "^11.0.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.6",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.9.6",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.0"
   }

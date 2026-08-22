@@ -84,7 +84,10 @@ export class Database {
     this.onQueryComplete = handler;
   }
 
-  async query<T extends QueryResultRow = any>(text: string, params?: any[]): Promise<QueryResult<T>> {
+  async query<T extends QueryResultRow = any>(
+    text: string,
+    params?: any[],
+  ): Promise<QueryResult<T>> {
     const startTime = performance.now();
     let success = true;
     let rowCount = 0;
@@ -111,9 +114,7 @@ export class Database {
     }
   }
 
-  async transaction<T>(
-    fn: (client: PoolClient) => Promise<T>,
-  ): Promise<T> {
+  async transaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -141,7 +142,13 @@ export class Database {
     await this.pool.end();
   }
 
-  getMetrics(): { totalQueries: number; totalErrors: number; idleCount: number; totalCount: number; waitingCount: number } {
+  getMetrics(): {
+    totalQueries: number;
+    totalErrors: number;
+    idleCount: number;
+    totalCount: number;
+    waitingCount: number;
+  } {
     return {
       totalQueries: this.totalQueries,
       totalErrors: this.totalErrors,

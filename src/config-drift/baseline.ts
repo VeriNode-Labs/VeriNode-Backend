@@ -29,7 +29,9 @@ export interface BaselineSnapshot {
   baselineHash: string;
 }
 
-export async function loadBaselineSnapshot(sources: BaselineConfigSource[]): Promise<BaselineSnapshot> {
+export async function loadBaselineSnapshot(
+  sources: BaselineConfigSource[],
+): Promise<BaselineSnapshot> {
   const source = sources[0];
   if (!source) throw new Error('No baseline sources configured');
   const baselineConfig = await source.loadBaseline();
@@ -37,4 +39,3 @@ export async function loadBaselineSnapshot(sources: BaselineConfigSource[]): Pro
   const baselineHash = computeHashFromFlattened(flattened);
   return { sourceName: source.name, baselineConfig, flattened, baselineHash };
 }
-

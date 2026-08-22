@@ -51,19 +51,13 @@ export class BaselineStore {
    * Load a baseline.  Returns `null` if no baseline exists for the
    * given branch/scenario combination.
    */
-  async load(
-    branch: string,
-    scenario: string,
-  ): Promise<PerformanceBaseline | null> {
+  async load(branch: string, scenario: string): Promise<PerformanceBaseline | null> {
     const file = this.filePath(branch, scenario);
     try {
       const raw = await fs.readFile(file, 'utf8');
       return JSON.parse(raw) as PerformanceBaseline;
     } catch (err: unknown) {
-      if (
-        err instanceof Error &&
-        (err as NodeJS.ErrnoException).code === 'ENOENT'
-      ) {
+      if (err instanceof Error && (err as NodeJS.ErrnoException).code === 'ENOENT') {
         return null;
       }
       throw err;
@@ -106,9 +100,7 @@ export class BaselineStore {
     try {
       await fs.unlink(file);
     } catch (err: unknown) {
-      if (
-        (err as NodeJS.ErrnoException).code !== 'ENOENT'
-      ) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
         throw err;
       }
     }

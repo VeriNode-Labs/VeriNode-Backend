@@ -62,7 +62,11 @@ async function test(name: string, fn: () => Promise<void> | void): Promise<void>
 function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'verinode-tls-test-'));
   return fn(dir).finally(() => {
-    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* noop */ }
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch {
+      /* noop */
+    }
   });
 }
 
@@ -87,10 +91,19 @@ async function generateSelfSignedCert(
   ];
 
   const args = [
-    'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
-    '-days', String(daysValid),
-    '-keyout', keyPath, '-out', certPath,
-    '-subj', '/CN=verinode-test',
+    'req',
+    '-x509',
+    '-newkey',
+    'rsa:2048',
+    '-nodes',
+    '-days',
+    String(daysValid),
+    '-keyout',
+    keyPath,
+    '-out',
+    certPath,
+    '-subj',
+    '/CN=verinode-test',
   ];
 
   let lastError: unknown;
@@ -102,7 +115,9 @@ async function generateSelfSignedCert(
       lastError = err;
     }
   }
-  throw new Error(`openssl not found. Tried: ${opensslCandidates.join(', ')}. Last error: ${lastError}`);
+  throw new Error(
+    `openssl not found. Tried: ${opensslCandidates.join(', ')}. Last error: ${lastError}`,
+  );
 }
 
 // ── Mock ACME Issuer ─────────────────────────────────────────────────────────
@@ -126,7 +141,11 @@ function createMockIssuer(opts: { fail?: boolean; daysValid?: number } = {}): Ac
         return { certificate, privateKey, chain: certificate };
       } finally {
         setTimeout(() => {
-          try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* noop */ }
+          try {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+          } catch {
+            /* noop */
+          }
         }, 0);
       }
     },
@@ -138,17 +157,31 @@ function createMockIssuer(opts: { fail?: boolean; daysValid?: number } = {}): Ac
 function createMockApp() {
   const routes: Record<string, Function> = {};
   return {
-    get(routePath: string, handler: Function) { routes[`GET:${routePath}`] = handler; },
-    post(routePath: string, handler: Function) { routes[`POST:${routePath}`] = handler; },
-    async request(method: string, routePath: string, body?: unknown): Promise<{ status: number; json: unknown }> {
+    get(routePath: string, handler: Function) {
+      routes[`GET:${routePath}`] = handler;
+    },
+    post(routePath: string, handler: Function) {
+      routes[`POST:${routePath}`] = handler;
+    },
+    async request(
+      method: string,
+      routePath: string,
+      body?: unknown,
+    ): Promise<{ status: number; json: unknown }> {
       const key = `${method}:${routePath}`;
       const handler = routes[key];
       if (!handler) return { status: 404, json: { error: 'not found' } };
       let resStatus = 200;
       let resJson: unknown = null;
       const res = {
-        status(code: number) { resStatus = code; return res; },
-        json(data: unknown) { resJson = data; return res; },
+        status(code: number) {
+          resStatus = code;
+          return res;
+        },
+        json(data: unknown) {
+          resJson = data;
+          return res;
+        },
       };
       const req = { body: body ?? {} };
       await handler(req, res);
@@ -160,7 +193,6 @@ function createMockApp() {
 // ── Main test runner ─────────────────────────────────────────────────────────
 
 async function runTests(): Promise<void> {
-
   // ── CertificateStore ────────────────────────────────────────────────────────
 
   console.log('\n  CertificateStore');
@@ -196,7 +228,9 @@ async function runTests(): Promise<void> {
 
   await test('readStatus() returns shouldRenew=true when cert expires in < 30 days', async () => {
     await withTempDir(async (dir) => {
-      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, { daysValid: 10 });
+      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, {
+        daysValid: 10,
+      });
       const certificate = await fsp.readFile(srcCert, 'utf8');
       const privateKey = await fsp.readFile(srcKey, 'utf8');
 
@@ -213,7 +247,9 @@ async function runTests(): Promise<void> {
 
   await test('readStatus() returns shouldRenew=false when cert has > 30 days', async () => {
     await withTempDir(async (dir) => {
-      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, { daysValid: 60 });
+      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, {
+        daysValid: 60,
+      });
       const certificate = await fsp.readFile(srcCert, 'utf8');
       const privateKey = await fsp.readFile(srcKey, 'utf8');
 
@@ -229,7 +265,9 @@ async function runTests(): Promise<void> {
 
   await test('readStatus() returns emergency=true when cert < 7 days', async () => {
     await withTempDir(async (dir) => {
-      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, { daysValid: 3 });
+      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, {
+        daysValid: 3,
+      });
       const certificate = await fsp.readFile(srcCert, 'utf8');
       const privateKey = await fsp.readFile(srcKey, 'utf8');
 
@@ -270,10 +308,7 @@ async function runTests(): Promise<void> {
   await test('set() rejects invalid token characters', async () => {
     await withTempDir(async (dir) => {
       const store = new FileChallengeStore({ webroot: dir });
-      await assert.rejects(
-        () => store.set('../evil', 'value'),
-        /invalid ACME challenge token/,
-      );
+      await assert.rejects(() => store.set('../evil', 'value'), /invalid ACME challenge token/);
     });
   });
 
@@ -283,8 +318,12 @@ async function runTests(): Promise<void> {
 
   await test('AcmeDns01Issuer rejects empty domains array', async () => {
     const dns01Store: Dns01ChallengeStore = {
-      async setTxtRecord() { return; },
-      async removeTxtRecord() { return; },
+      async setTxtRecord() {
+        return;
+      },
+      async removeTxtRecord() {
+        return;
+      },
     };
     const issuer = new AcmeDns01Issuer({
       directoryUrl: 'https://acme-staging-v02.api.letsencrypt.org/directory',
@@ -301,8 +340,12 @@ async function runTests(): Promise<void> {
   await test('DNS-01 challenge store set/remove records correctly', async () => {
     const records = new Map<string, string>();
     const dns01Store: Dns01ChallengeStore = {
-      async setTxtRecord(domain: string, value: string) { records.set(domain, value); },
-      async removeTxtRecord(domain: string) { records.delete(domain); },
+      async setTxtRecord(domain: string, value: string) {
+        records.set(domain, value);
+      },
+      async removeTxtRecord(domain: string) {
+        records.delete(domain);
+      },
     };
     await dns01Store.setTxtRecord('example.com', 'some-acme-key');
     assert.equal(records.get('example.com'), 'some-acme-key');
@@ -347,10 +390,22 @@ async function runTests(): Promise<void> {
     metrics.recordRenewalAttempt('auth-service');
     metrics.recordRenewalFailure('auth-service');
     const prom = metrics.renderPrometheus();
-    assert.ok(prom.includes('verinode_cert_expiry_days{service="api-gateway"} 30'), 'api-gateway gauge');
-    assert.ok(prom.includes('verinode_cert_expiry_days{service="auth-service"} 5'), 'auth-service gauge');
-    assert.ok(prom.includes('verinode_cert_renewal_successes_total{service="api-gateway"} 1'), 'success counter');
-    assert.ok(prom.includes('verinode_cert_renewal_failures_total{service="auth-service"} 1'), 'failure counter');
+    assert.ok(
+      prom.includes('verinode_cert_expiry_days{service="api-gateway"} 30'),
+      'api-gateway gauge',
+    );
+    assert.ok(
+      prom.includes('verinode_cert_expiry_days{service="auth-service"} 5'),
+      'auth-service gauge',
+    );
+    assert.ok(
+      prom.includes('verinode_cert_renewal_successes_total{service="api-gateway"} 1'),
+      'success counter',
+    );
+    assert.ok(
+      prom.includes('verinode_cert_renewal_failures_total{service="auth-service"} 1'),
+      'failure counter',
+    );
     assert.ok(prom.includes('# HELP verinode_cert_expiry_days'), 'HELP line');
     assert.ok(prom.includes('# TYPE verinode_cert_expiry_days gauge'), 'TYPE line');
   });
@@ -361,7 +416,9 @@ async function runTests(): Promise<void> {
 
   await test('checkOnce() does not renew when cert has > 30 days remaining', async () => {
     await withTempDir(async (dir) => {
-      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, { daysValid: 60 });
+      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, {
+        daysValid: 60,
+      });
       const certificate = await fsp.readFile(srcCert, 'utf8');
       const privateKey = await fsp.readFile(srcKey, 'utf8');
 
@@ -394,7 +451,9 @@ async function runTests(): Promise<void> {
 
   await test('checkOnce() renews when cert has < 30 days remaining', async () => {
     await withTempDir(async (dir) => {
-      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, { daysValid: 10 });
+      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, {
+        daysValid: 10,
+      });
       const certificate = await fsp.readFile(srcCert, 'utf8');
       const privateKey = await fsp.readFile(srcKey, 'utf8');
 
@@ -420,7 +479,9 @@ async function runTests(): Promise<void> {
 
   await test('checkOnce() emits warning alert on renewal failure', async () => {
     await withTempDir(async (dir) => {
-      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, { daysValid: 10 });
+      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, {
+        daysValid: 10,
+      });
       const certificate = await fsp.readFile(srcCert, 'utf8');
       const privateKey = await fsp.readFile(srcKey, 'utf8');
 
@@ -437,7 +498,9 @@ async function runTests(): Promise<void> {
         issuer: createMockIssuer({ fail: true }),
         store,
         renewBeforeDays: 30,
-        onAlert: (a) => { alerts.push(a.severity); },
+        onAlert: (a) => {
+          alerts.push(a.severity);
+        },
       });
       const result: RenewalResult = await manager.checkOnce();
       assert.equal(result.attempted, true, 'should attempt renewal');
@@ -449,7 +512,9 @@ async function runTests(): Promise<void> {
 
   await test('checkOnce() emits critical alert in emergency window on failure', async () => {
     await withTempDir(async (dir) => {
-      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, { daysValid: 3 });
+      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, {
+        daysValid: 3,
+      });
       const certificate = await fsp.readFile(srcCert, 'utf8');
       const privateKey = await fsp.readFile(srcKey, 'utf8');
 
@@ -467,7 +532,9 @@ async function runTests(): Promise<void> {
         store,
         renewBeforeDays: 30,
         emergencyNotifyDays: 7,
-        onAlert: (a) => { alerts.push({ severity: a.severity }); },
+        onAlert: (a) => {
+          alerts.push({ severity: a.severity });
+        },
       });
       await manager.checkOnce();
       assert.ok(
@@ -523,7 +590,9 @@ async function runTests(): Promise<void> {
   await test('issue cert → fast-forward 25 days → renewal triggers → cert replaced', async () => {
     await withTempDir(async (dir) => {
       // Step 1: Issue an initial certificate with 30-day validity
-      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, { daysValid: 30 });
+      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, {
+        daysValid: 30,
+      });
       const initialCert = await fsp.readFile(srcCert, 'utf8');
       const initialKey = await fsp.readFile(srcKey, 'utf8');
 
@@ -557,7 +626,8 @@ async function runTests(): Promise<void> {
       // Verify status shows renewal needed with fast-forwarded clock
       const statusBefore = await manager.status();
       assert.equal(
-        statusBefore.shouldRenew, true,
+        statusBefore.shouldRenew,
+        true,
         `cert should need renewal after 25 days, daysRemaining=${statusBefore.daysRemaining}`,
       );
       assert.ok(
@@ -575,7 +645,8 @@ async function runTests(): Promise<void> {
       const newCertContent = await store.readCertificate();
       assert.ok(newCertContent.includes('CERTIFICATE'), 'new cert should be valid PEM');
       assert.ok(
-        new Date(result.expiresAt!).getTime() > new Date(initialStatus.expiresAt!).getTime() + msIn25Days,
+        new Date(result.expiresAt!).getTime() >
+          new Date(initialStatus.expiresAt!).getTime() + msIn25Days,
         'renewed cert should expire later than the original',
       );
     });
@@ -623,7 +694,9 @@ async function runTests(): Promise<void> {
   await test('getAllStatus() returns alerting=true when cert < 14 days', async () => {
     await withTempDir(async (dir) => {
       const svcDir = path.join(dir, 'api-gateway');
-      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, { daysValid: 10 });
+      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, {
+        daysValid: 10,
+      });
       const certificate = await fsp.readFile(srcCert, 'utf8');
       const privateKey = await fsp.readFile(srcKey, 'utf8');
 
@@ -636,7 +709,9 @@ async function runTests(): Promise<void> {
 
       const mgr = new CertLifecycleManager({
         certsRoot: dir,
-        services: [{ service: 'api-gateway', domains: ['api.example.com'], email: 'ops@example.com' }],
+        services: [
+          { service: 'api-gateway', domains: ['api.example.com'], email: 'ops@example.com' },
+        ],
         issuer: createMockIssuer({ fail: true }),
       });
       const statuses = await mgr.getAllStatus();
@@ -648,7 +723,9 @@ async function runTests(): Promise<void> {
   await test('getAllStatus() returns alerting=false when cert has > 14 days', async () => {
     await withTempDir(async (dir) => {
       const svcDir = path.join(dir, 'api-gateway');
-      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, { daysValid: 20 });
+      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, {
+        daysValid: 20,
+      });
       const certificate = await fsp.readFile(srcCert, 'utf8');
       const privateKey = await fsp.readFile(srcKey, 'utf8');
 
@@ -660,7 +737,9 @@ async function runTests(): Promise<void> {
 
       const mgr = new CertLifecycleManager({
         certsRoot: dir,
-        services: [{ service: 'api-gateway', domains: ['api.example.com'], email: 'ops@example.com' }],
+        services: [
+          { service: 'api-gateway', domains: ['api.example.com'], email: 'ops@example.com' },
+        ],
         issuer: createMockIssuer({ fail: true }),
       });
       const statuses = await mgr.getAllStatus();
@@ -672,7 +751,9 @@ async function runTests(): Promise<void> {
     await withTempDir(async (dir) => {
       for (const svc of ['svc-a', 'svc-b']) {
         const svcDir = path.join(dir, svc);
-        const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, { daysValid: 5 });
+        const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, {
+          daysValid: 5,
+        });
         const certificate = await fsp.readFile(srcCert, 'utf8');
         const privateKey = await fsp.readFile(srcKey, 'utf8');
         const store = new CertificateStore({
@@ -701,7 +782,9 @@ async function runTests(): Promise<void> {
   await test('checkServiceOnce() renews individual service', async () => {
     await withTempDir(async (dir) => {
       const svcDir = path.join(dir, 'api-gateway');
-      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, { daysValid: 5 });
+      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, {
+        daysValid: 5,
+      });
       const certificate = await fsp.readFile(srcCert, 'utf8');
       const privateKey = await fsp.readFile(srcKey, 'utf8');
       const store = new CertificateStore({
@@ -712,7 +795,9 @@ async function runTests(): Promise<void> {
 
       const mgr = new CertLifecycleManager({
         certsRoot: dir,
-        services: [{ service: 'api-gateway', domains: ['api.example.com'], email: 'ops@example.com' }],
+        services: [
+          { service: 'api-gateway', domains: ['api.example.com'], email: 'ops@example.com' },
+        ],
         issuer: createMockIssuer({ daysValid: 90 }),
       });
       const result = await mgr.checkServiceOnce('api-gateway');
@@ -725,7 +810,9 @@ async function runTests(): Promise<void> {
     await withTempDir(async (dir) => {
       const mgr = new CertLifecycleManager({
         certsRoot: dir,
-        services: [{ service: 'api-gateway', domains: ['api.example.com'], email: 'ops@example.com' }],
+        services: [
+          { service: 'api-gateway', domains: ['api.example.com'], email: 'ops@example.com' },
+        ],
         issuer: createMockIssuer(),
       });
       await assert.rejects(
@@ -738,7 +825,9 @@ async function runTests(): Promise<void> {
   await test('prometheusMetrics() includes cert_expiry_days gauge per service', async () => {
     await withTempDir(async (dir) => {
       const svcDir = path.join(dir, 'api-gateway');
-      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, { daysValid: 10 });
+      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, {
+        daysValid: 10,
+      });
       const certificate = await fsp.readFile(srcCert, 'utf8');
       const privateKey = await fsp.readFile(srcKey, 'utf8');
       const store = new CertificateStore({
@@ -749,12 +838,17 @@ async function runTests(): Promise<void> {
 
       const mgr = new CertLifecycleManager({
         certsRoot: dir,
-        services: [{ service: 'api-gateway', domains: ['api.example.com'], email: 'ops@example.com' }],
+        services: [
+          { service: 'api-gateway', domains: ['api.example.com'], email: 'ops@example.com' },
+        ],
         issuer: createMockIssuer({ fail: true }),
       });
       await mgr.checkAllOnce();
       const prom = mgr.prometheusMetrics();
-      assert.ok(prom.includes('verinode_cert_expiry_days'), 'should include cert_expiry_days metric');
+      assert.ok(
+        prom.includes('verinode_cert_expiry_days'),
+        'should include cert_expiry_days metric',
+      );
       assert.ok(prom.includes('service="api-gateway"'), 'should have api-gateway label');
     });
   });
@@ -763,7 +857,9 @@ async function runTests(): Promise<void> {
     await withTempDir(async (dir) => {
       const mgr = new CertLifecycleManager({
         certsRoot: dir,
-        services: [{ service: 'api-gateway', domains: ['api.example.com'], email: 'ops@example.com' }],
+        services: [
+          { service: 'api-gateway', domains: ['api.example.com'], email: 'ops@example.com' },
+        ],
         issuer: createMockIssuer({ fail: true }),
         checkIntervalMs: 100_000,
       });
@@ -784,7 +880,9 @@ async function runTests(): Promise<void> {
     await withTempDir(async (dir) => {
       const mgr = new CertLifecycleManager({
         certsRoot: dir,
-        services: [{ service: 'api-gateway', domains: ['api.example.com'], email: 'ops@example.com' }],
+        services: [
+          { service: 'api-gateway', domains: ['api.example.com'], email: 'ops@example.com' },
+        ],
         issuer: createMockIssuer({ fail: true }),
       });
       const app = createMockApp();
@@ -800,7 +898,9 @@ async function runTests(): Promise<void> {
   await test('POST /api/v1/certs/renew triggers renewal for all services', async () => {
     await withTempDir(async (dir) => {
       const svcDir = path.join(dir, 'api-gateway');
-      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, { daysValid: 5 });
+      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, {
+        daysValid: 5,
+      });
       const certificate = await fsp.readFile(srcCert, 'utf8');
       const privateKey = await fsp.readFile(srcKey, 'utf8');
       const store = new CertificateStore({
@@ -811,7 +911,9 @@ async function runTests(): Promise<void> {
 
       const mgr = new CertLifecycleManager({
         certsRoot: dir,
-        services: [{ service: 'api-gateway', domains: ['api.example.com'], email: 'ops@example.com' }],
+        services: [
+          { service: 'api-gateway', domains: ['api.example.com'], email: 'ops@example.com' },
+        ],
         issuer: createMockIssuer({ daysValid: 90 }),
       });
       const app = createMockApp();
@@ -827,7 +929,9 @@ async function runTests(): Promise<void> {
   await test('POST /api/v1/certs/renew with service name targets only that service', async () => {
     await withTempDir(async (dir) => {
       const svcDir = path.join(dir, 'api-gateway');
-      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, { daysValid: 5 });
+      const { certPath: srcCert, keyPath: srcKey } = await generateSelfSignedCert(dir, {
+        daysValid: 5,
+      });
       const certificate = await fsp.readFile(srcCert, 'utf8');
       const privateKey = await fsp.readFile(srcKey, 'utf8');
       const store = new CertificateStore({
@@ -857,7 +961,9 @@ async function runTests(): Promise<void> {
     await withTempDir(async (dir) => {
       const mgr = new CertLifecycleManager({
         certsRoot: dir,
-        services: [{ service: 'api-gateway', domains: ['api.example.com'], email: 'ops@example.com' }],
+        services: [
+          { service: 'api-gateway', domains: ['api.example.com'], email: 'ops@example.com' },
+        ],
         issuer: createMockIssuer(),
       });
       const app = createMockApp();
@@ -926,11 +1032,26 @@ async function runTests(): Promise<void> {
       let statusCode = 200;
       const req = { params: { token: 'testtoken' } };
       const res = {
-        type(ct: string) { contentType = ct; return res; },
-        send(val: string) { sent = val; return res; },
-        status(code: number) { statusCode = code; return res; },
+        type(ct: string) {
+          contentType = ct;
+          return res;
+        },
+        send(val: string) {
+          sent = val;
+          return res;
+        },
+        status(code: number) {
+          statusCode = code;
+          return res;
+        },
       };
-      await handler(req as any, res as any, (() => { return; }) as any);
+      await handler(
+        req as any,
+        res as any,
+        (() => {
+          return;
+        }) as any,
+      );
       assert.equal(sent, 'test-key-auth');
       assert.equal(contentType, 'text/plain');
       assert.equal(statusCode, 200);
@@ -945,11 +1066,24 @@ async function runTests(): Promise<void> {
       let statusCode = 200;
       const req = { params: { token: 'unknown' } };
       const res = {
-        type(_ct: string) { return res; },
-        send(_val: string) { return res; },
-        status(code: number) { statusCode = code; return res; },
+        type(_ct: string) {
+          return res;
+        },
+        send(_val: string) {
+          return res;
+        },
+        status(code: number) {
+          statusCode = code;
+          return res;
+        },
       };
-      await handler(req as any, res as any, (() => { return; }) as any);
+      await handler(
+        req as any,
+        res as any,
+        (() => {
+          return;
+        }) as any,
+      );
       assert.equal(statusCode, 404);
     });
   });

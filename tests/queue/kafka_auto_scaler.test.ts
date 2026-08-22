@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { KafkaConsumerMonitor } from '../../src/queue/kafka_consumer_monitor';
 import { KafkaAutoScaler } from '../../src/queue/kafka_auto_scaler';
-import type { ConsumerGroupMetrics, KafkaClusterInfo, ConsumerGroupSummary } from '../../src/queue/kafka_consumer_monitor';
+import type {
+  ConsumerGroupMetrics,
+  KafkaClusterInfo,
+  ConsumerGroupSummary,
+} from '../../src/queue/kafka_consumer_monitor';
 
 function createMockAdminClient() {
   const groups = new Map<string, ConsumerGroupMetrics[]>();
@@ -58,21 +62,17 @@ describe('KafkaAutoScaler', () => {
       getCurrentConsumerCount: vi.fn().mockResolvedValue(4),
       scaleConsumerGroup: vi.fn().mockResolvedValue(undefined),
     };
-    const autoScaler = new KafkaAutoScaler(
-      monitor,
-      mockScaler,
-      {
-        minConsumers: 1,
-        maxConsumers: 10,
-        scaleUpThreshold: 1000,
-        scaleDownThreshold: 100,
-        scaleUpBy: 2,
-        scaleDownBy: 1,
-        cooldownPeriodMs: 100,
-        maxConsecutiveScaleDowns: 3,
-        ...config,
-      },
-    );
+    const autoScaler = new KafkaAutoScaler(monitor, mockScaler, {
+      minConsumers: 1,
+      maxConsumers: 10,
+      scaleUpThreshold: 1000,
+      scaleDownThreshold: 100,
+      scaleUpBy: 2,
+      scaleDownBy: 1,
+      cooldownPeriodMs: 100,
+      maxConsecutiveScaleDowns: 3,
+      ...config,
+    });
     return { monitor, autoScaler, mockScaler };
   }
 

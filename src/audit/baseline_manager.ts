@@ -190,21 +190,19 @@ export class BaselineManager {
 
   /** Inline access-denied audit write that does NOT depend on AuditLogger. */
   private async _writeAccessDenied(actor: ActorContext, operation: string): Promise<void> {
-    await this.pool.query(
-      `INSERT INTO config_audit_log
+    await this.pool
+      .query(
+        `INSERT INTO config_audit_log
          (config_path, previous_value, new_value, actor, source_ip, changed_at, change_source, hmac_digest)
        VALUES
          ($1, NULL, NULL, $2, $3::inet, NOW(), 'access_denied', repeat('0', 64))`,
-      [
-        `baseline.${operation}`,
-        actor.actorId,
-        actor.sourceIp,
-      ],
-    ).catch((err: Error) => {
-      // Best-effort: if we can't write the denial entry, log and move on.
-      this.logger.warn('[BaselineManager] Could not write access-denied audit entry', {
-        'error.message': err.message,
+        [`baseline.${operation}`, actor.actorId, actor.sourceIp],
+      )
+      .catch((err: Error) => {
+        // Best-effort: if we can't write the denial entry, log and move on.
+        this.logger.warn('[BaselineManager] Could not write access-denied audit entry', {
+          'error.message': err.message,
+        });
       });
-    });
   }
 }

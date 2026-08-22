@@ -19,7 +19,10 @@ export interface NotificationDeliveryStore {
   ): Promise<NotificationDeliveryRecord | null>;
   markDelivered(slashingEventId: string, channel: NotificationChannel): Promise<void>;
   markFailed(slashingEventId: string, channel: NotificationChannel, error: unknown): Promise<void>;
-  getDelivery(slashingEventId: string, channel: NotificationChannel): Promise<NotificationDeliveryRecord | null>;
+  getDelivery(
+    slashingEventId: string,
+    channel: NotificationChannel,
+  ): Promise<NotificationDeliveryRecord | null>;
 }
 
 interface QueryResult<T> {
@@ -74,7 +77,11 @@ export class PgNotificationDeliveryStore implements NotificationDeliveryStore {
     );
   }
 
-  async markFailed(slashingEventId: string, channel: NotificationChannel, error: unknown): Promise<void> {
+  async markFailed(
+    slashingEventId: string,
+    channel: NotificationChannel,
+    error: unknown,
+  ): Promise<void> {
     await this.db.query(
       `UPDATE notification_delivery
        SET status = 'failed', updated_at = NOW(), last_error = $3
@@ -83,7 +90,10 @@ export class PgNotificationDeliveryStore implements NotificationDeliveryStore {
     );
   }
 
-  async getDelivery(slashingEventId: string, channel: NotificationChannel): Promise<NotificationDeliveryRecord | null> {
+  async getDelivery(
+    slashingEventId: string,
+    channel: NotificationChannel,
+  ): Promise<NotificationDeliveryRecord | null> {
     const result = await this.db.query<DeliveryRow>(
       `SELECT *
        FROM notification_delivery
@@ -130,7 +140,11 @@ export class InMemoryNotificationDeliveryStore implements NotificationDeliverySt
     }
   }
 
-  async markFailed(slashingEventId: string, channel: NotificationChannel, error: unknown): Promise<void> {
+  async markFailed(
+    slashingEventId: string,
+    channel: NotificationChannel,
+    error: unknown,
+  ): Promise<void> {
     const record = this.records.get(this.key(slashingEventId, channel));
     if (record) {
       record.status = 'failed';
@@ -139,7 +153,10 @@ export class InMemoryNotificationDeliveryStore implements NotificationDeliverySt
     }
   }
 
-  async getDelivery(slashingEventId: string, channel: NotificationChannel): Promise<NotificationDeliveryRecord | null> {
+  async getDelivery(
+    slashingEventId: string,
+    channel: NotificationChannel,
+  ): Promise<NotificationDeliveryRecord | null> {
     const record = this.records.get(this.key(slashingEventId, channel));
     return record ? { ...record } : null;
   }

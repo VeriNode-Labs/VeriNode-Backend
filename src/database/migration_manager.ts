@@ -23,7 +23,13 @@ export interface MigrationDefinition {
 }
 
 export interface MigrationEvent {
-  type: 'migration_started' | 'migration_completed' | 'migration_failed' | 'rollback_started' | 'rollback_completed' | 'rollback_failed';
+  type:
+    | 'migration_started'
+    | 'migration_completed'
+    | 'migration_failed'
+    | 'rollback_started'
+    | 'rollback_completed'
+    | 'rollback_failed';
   version: string;
   name: string;
   executionMs?: number;
@@ -52,7 +58,9 @@ export class MigrationManager {
         rolled_back_at TIMESTAMPTZ NULL
       )
     `);
-    await this.client.query('CREATE INDEX IF NOT EXISTS schema_migrations_active_idx ON schema_migrations (version) WHERE rolled_back_at IS NULL');
+    await this.client.query(
+      'CREATE INDEX IF NOT EXISTS schema_migrations_active_idx ON schema_migrations (version) WHERE rolled_back_at IS NULL',
+    );
   }
 
   loadMigrations(): MigrationDefinition[] {
@@ -72,7 +80,9 @@ export class MigrationManager {
     await this.ensureSchema();
     const applied = await this.appliedVersions();
     const candidates = this.loadMigrations().filter((migration) => !applied.has(migration.version));
-    const selected = targetVersion ? candidates.filter((migration) => migration.version <= targetVersion) : candidates;
+    const selected = targetVersion
+      ? candidates.filter((migration) => migration.version <= targetVersion)
+      : candidates;
     const records: MigrationRecord[] = [];
 
     for (const migration of selected) {
@@ -84,7 +94,9 @@ export class MigrationManager {
 
   async rollback(targetVersion: string): Promise<MigrationRecord[]> {
     await this.ensureSchema();
-    const migrations = new Map(this.loadMigrations().map((migration) => [migration.version, migration]));
+    const migrations = new Map(
+      this.loadMigrations().map((migration) => [migration.version, migration]),
+    );
     const result = await this.client.query<MigrationRecord>(
       'SELECT version, name, checksum, applied_at as "appliedAt", execution_ms as "executionMs", rolled_back_at as "rolledBackAt" FROM schema_migrations WHERE rolled_back_at IS NULL AND version > $1 ORDER BY version DESC',
       [targetVersion],
@@ -116,11 +128,27 @@ export class MigrationManager {
         [migration.version, migration.name, migration.checksum, executionMs],
       );
       await this.client.query('COMMIT');
-      this.emit({ type: 'migration_completed', version: migration.version, name: migration.name, executionMs });
-      return { version: migration.version, name: migration.name, checksum: migration.checksum, appliedAt: new Date(), executionMs };
+      this.emit({
+        type: 'migration_completed',
+        version: migration.version,
+        name: migration.name,
+        executionMs,
+      });
+      return {
+        version: migration.version,
+        name: migration.name,
+        checksum: migration.checksum,
+        appliedAt: new Date(),
+        executionMs,
+      };
     } catch (error) {
       await this.client.query('ROLLBACK');
-      this.emit({ type: 'migration_failed', version: migration.version, name: migration.name, error: String(error) });
+      this.emit({
+        type: 'migration_failed',
+        version: migration.version,
+        name: migration.name,
+        error: String(error),
+      });
       throw error;
     }
   }
@@ -132,19 +160,41 @@ export class MigrationManager {
       await this.client.query('BEGIN');
       await this.client.query(migration.down);
       const executionMs = Date.now() - started;
-      await this.client.query('UPDATE schema_migrations SET rolled_back_at = NOW(), execution_ms = $2 WHERE version = $1', [migration.version, executionMs]);
+      await this.client.query(
+        'UPDATE schema_migrations SET rolled_back_at = NOW(), execution_ms = $2 WHERE version = $1',
+        [migration.version, executionMs],
+      );
       await this.client.query('COMMIT');
-      this.emit({ type: 'rollback_completed', version: migration.version, name: migration.name, executionMs });
-      return { version: migration.version, name: migration.name, checksum: migration.checksum, appliedAt: new Date(), executionMs, rolledBackAt: new Date() };
+      this.emit({
+        type: 'rollback_completed',
+        version: migration.version,
+        name: migration.name,
+        executionMs,
+      });
+      return {
+        version: migration.version,
+        name: migration.name,
+        checksum: migration.checksum,
+        appliedAt: new Date(),
+        executionMs,
+        rolledBackAt: new Date(),
+      };
     } catch (error) {
       await this.client.query('ROLLBACK');
-      this.emit({ type: 'rollback_failed', version: migration.version, name: migration.name, error: String(error) });
+      this.emit({
+        type: 'rollback_failed',
+        version: migration.version,
+        name: migration.name,
+        error: String(error),
+      });
       throw error;
     }
   }
 
   private async appliedVersions(): Promise<Set<string>> {
-    const result = await this.client.query<{ version: string }>('SELECT version FROM schema_migrations WHERE rolled_back_at IS NULL');
+    const result = await this.client.query<{ version: string }>(
+      'SELECT version FROM schema_migrations WHERE rolled_back_at IS NULL',
+    );
     return new Set(result.rows.map((row) => row.version));
   }
 
@@ -152,14 +202,26 @@ export class MigrationManager {
     const content = readFileSync(join(this.migrationsDir, file), 'utf-8');
     const marker = content.match(HEADER_PATTERN);
     if (!marker) {
-      return { version: file.split('_')[0], name: basename(file, '.sql'), up: content, down: `-- no-op rollback for ${file}`, checksum: checksum(content) };
+      return {
+        version: file.split('_')[0],
+        name: basename(file, '.sql'),
+        up: content,
+        down: `-- no-op rollback for ${file}`,
+        checksum: checksum(content),
+      };
     }
     const upMatch = content.match(/^--\s*@up\s*$(.*?)^--\s*@down\s*$/ims);
     const downMatch = content.match(/^--\s*@down\s*$(.*)$/ims);
     if (!upMatch || !downMatch || !downMatch[1].trim()) {
       throw new Error(`Migration ${file} must include -- @up and non-empty -- @down sections`);
     }
-    return { version: file.split('_')[0], name: basename(file, '.sql'), up: upMatch[1].trim(), down: downMatch[1].trim(), checksum: checksum(content) };
+    return {
+      version: file.split('_')[0],
+      name: basename(file, '.sql'),
+      up: upMatch[1].trim(),
+      down: downMatch[1].trim(),
+      checksum: checksum(content),
+    };
   }
 }
 

@@ -207,11 +207,18 @@ class AdaptivePoolProbe {
   private evaluate(): void {
     if (!this.durationSamplesMs.length || !this.utilizationSamples.length) return;
 
-    const durationP95 = percentile([...this.durationSamplesMs].sort((a, b) => a - b), 0.95);
-    const waitP90 = percentile([...this.waitSamplesMs].sort((a, b) => a - b), 0.9);
+    const durationP95 = percentile(
+      [...this.durationSamplesMs].sort((a, b) => a - b),
+      0.95,
+    );
+    const waitP90 = percentile(
+      [...this.waitSamplesMs].sort((a, b) => a - b),
+      0.9,
+    );
     const utilization = average(this.utilizationSamples);
 
-    const latencyError = (durationP95 - this.config.latencyThresholdMs) / this.config.latencyThresholdMs;
+    const latencyError =
+      (durationP95 - this.config.latencyThresholdMs) / this.config.latencyThresholdMs;
     const waitError = (waitP90 - this.config.waitThresholdMs) / this.config.waitThresholdMs;
     const error = Math.max(latencyError, waitError);
 
@@ -219,7 +226,8 @@ class AdaptivePoolProbe {
     this.integral += error * dt;
     const derivative = (error - this.previousError) / dt;
     this.previousError = error;
-    const pid = this.config.kp * error + this.config.ki * this.integral + this.config.kd * derivative;
+    const pid =
+      this.config.kp * error + this.config.ki * this.integral + this.config.kd * derivative;
 
     const now = Date.now();
     const desiredStep = Math.sign(pid) * this.config.adjustmentStep;
@@ -232,7 +240,12 @@ class AdaptivePoolProbe {
       if (this.canAdjust(1, now)) {
         nextMax = this.clamp(currentMax + this.config.adjustmentStep);
       }
-    } else if (pid < -0.2 && durationP95 < this.config.latencyThresholdMs && waitP90 < this.config.waitThresholdMs && utilization < 0.6) {
+    } else if (
+      pid < -0.2 &&
+      durationP95 < this.config.latencyThresholdMs &&
+      waitP90 < this.config.waitThresholdMs &&
+      utilization < 0.6
+    ) {
       nextDirection = -1;
       if (this.canAdjust(-1, now)) {
         nextMax = this.clamp(currentMax - this.config.adjustmentStep);
@@ -253,7 +266,10 @@ class AdaptivePoolProbe {
   }
 
   private clamp(maxConnections: number): number {
-    return Math.min(this.config.maxConnections, Math.max(this.config.minConnections, maxConnections));
+    return Math.min(
+      this.config.maxConnections,
+      Math.max(this.config.minConnections, maxConnections),
+    );
   }
 }
 // ── PriorityRouter ────────────────────────────────────────────────────────────
@@ -271,10 +287,7 @@ export class PriorityRouter {
     spilloverTotal: 0,
   };
 
-  constructor(
-    config: DualPoolConfig,
-    poolFactory: PoolFactory = defaultPoolFactory,
-  ) {
+  constructor(config: DualPoolConfig, poolFactory: PoolFactory = defaultPoolFactory) {
     this.spilloverWaitMs = config.spilloverWaitMs ?? 100;
 
     const base: PoolConfig = {

@@ -66,10 +66,7 @@ export interface JobExecutionContext {
   workerId: string;
 }
 
-export type JobHandler<T = unknown> = (
-  payload: T,
-  ctx: JobExecutionContext,
-) => Promise<void>;
+export type JobHandler<T = unknown> = (payload: T, ctx: JobExecutionContext) => Promise<void>;
 
 export interface WorkerConfig {
   /** How often to poll for new jobs (ms). */
@@ -118,7 +115,11 @@ export interface RowLockRecord {
 
 export interface JobStore {
   scheduleJob<T>(jobType: JobType, payload: T, options?: ScheduleOptions): Promise<string>;
-  claimJob(jobType: JobType, workerId: string, leaseDurationMs: number): Promise<JobDefinition | null>;
+  claimJob(
+    jobType: JobType,
+    workerId: string,
+    leaseDurationMs: number,
+  ): Promise<JobDefinition | null>;
   completeJob(jobId: string): Promise<void>;
   failJob(jobId: string, errorMessage: string): Promise<void>;
   renewLease(jobId: string, workerId: string, leaseDurationMs: number): Promise<boolean>;

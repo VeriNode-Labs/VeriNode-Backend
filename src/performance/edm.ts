@@ -97,11 +97,7 @@ function withinDispersion(arr: number[]): number {
  *                 Higher = fewer change points detected.
  * @returns Sorted array of change-point indices (split positions).
  */
-export function findChangePoints(
-  series: number[],
-  minSize = 5,
-  alpha = 1.0,
-): number[] {
+export function findChangePoints(series: number[], minSize = 5, alpha = 1.0): number[] {
   const results: number[] = [];
   searchSegment(series, 0, series.length, minSize, alpha, results);
   return results.sort((a, b) => a - b);

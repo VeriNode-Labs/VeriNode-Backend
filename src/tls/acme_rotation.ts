@@ -209,7 +209,11 @@ export class CertificateStore {
     return fsp.readFile(this.keyPath, 'utf8');
   }
 
-  async readStatus(now: Date, renewBeforeDays: number, emergencyNotifyDays: number): Promise<CertificateStatus> {
+  async readStatus(
+    now: Date,
+    renewBeforeDays: number,
+    emergencyNotifyDays: number,
+  ): Promise<CertificateStatus> {
     if (!(await this.exists())) {
       return {
         exists: false,
@@ -233,7 +237,9 @@ export class CertificateStore {
   }
 
   async writeAtomic(next: StoredCertificate): Promise<void> {
-    const certBody = next.chain ? `${next.certificate.trim()}\n${next.chain.trim()}\n` : ensureTrailingNewline(next.certificate);
+    const certBody = next.chain
+      ? `${next.certificate.trim()}\n${next.chain.trim()}\n`
+      : ensureTrailingNewline(next.certificate);
     await Promise.all([
       atomicWriteFile(this.certPath, certBody, 0o644),
       atomicWriteFile(this.keyPath, ensureTrailingNewline(next.privateKey), this.fileMode),
@@ -246,7 +252,10 @@ export class CertificateStore {
   loadSecureContext(): tls.SecureContext {
     const cert = fs.readFileSync(this.certPath, 'utf8');
     const key = fs.readFileSync(this.keyPath, 'utf8');
-    const ca = this.chainPath && fs.existsSync(this.chainPath) ? fs.readFileSync(this.chainPath, 'utf8') : undefined;
+    const ca =
+      this.chainPath && fs.existsSync(this.chainPath)
+        ? fs.readFileSync(this.chainPath, 'utf8')
+        : undefined;
     return tls.createSecureContext({ cert, key, ca });
   }
 }
@@ -732,13 +741,19 @@ export class TlsCertificateReloader extends EventEmitter {
     return this.currentContext;
   }
 
-  SNICallback(_servername: string, callback: (err: Error | null, ctx?: tls.SecureContext) => void): void {
+  SNICallback(
+    _servername: string,
+    callback: (err: Error | null, ctx?: tls.SecureContext) => void,
+  ): void {
     callback(null, this.getContext());
   }
 
   start(): void {
     if (this.watchers.length > 0) return;
-    const dirs = new Set([path.dirname(this.options.store.certPath), path.dirname(this.options.store.keyPath)]);
+    const dirs = new Set([
+      path.dirname(this.options.store.certPath),
+      path.dirname(this.options.store.keyPath),
+    ]);
     if (this.options.store.chainPath) dirs.add(path.dirname(this.options.store.chainPath));
     for (const dir of dirs) {
       fs.mkdirSync(dir, { recursive: true });
@@ -790,7 +805,11 @@ export class AcmeRenewalManager extends EventEmitter {
   }
 
   async status(): Promise<CertificateStatus> {
-    return this.options.store.readStatus(this.now(), this.renewBeforeDays, this.emergencyNotifyDays);
+    return this.options.store.readStatus(
+      this.now(),
+      this.renewBeforeDays,
+      this.emergencyNotifyDays,
+    );
   }
 
   start(): void {
@@ -822,7 +841,11 @@ export class AcmeRenewalManager extends EventEmitter {
       await this.options.store.writeAtomic(issued);
       const after = await this.status();
       this.emitMetrics(after);
-      await this.alert({ severity: 'info', message: 'TLS certificate renewed successfully', status: after });
+      await this.alert({
+        severity: 'info',
+        message: 'TLS certificate renewed successfully',
+        status: after,
+      });
       this.emit('renewed', after);
       return { attempted: true, renewed: true, expiresAt: after.expiresAt };
     } catch (err) {
@@ -863,7 +886,9 @@ export class AcmeRenewalManager extends EventEmitter {
   }
 }
 
-export async function createAcmeChallengeHandler(store: ChallengeStore): Promise<express.RequestHandler> {
+export async function createAcmeChallengeHandler(
+  store: ChallengeStore,
+): Promise<express.RequestHandler> {
   return async (req, res) => {
     const token = Array.isArray(req.params.token) ? req.params.token[0] : req.params.token;
     if (!token) return res.status(400).send('invalid challenge');
@@ -877,7 +902,10 @@ export async function createAcmeChallengeHandler(store: ChallengeStore): Promise
   };
 }
 
-export async function bootstrapTlsFromEnv(app: express.Express, options: EnvTlsBootstrapOptions): Promise<https.Server | null> {
+export async function bootstrapTlsFromEnv(
+  app: express.Express,
+  options: EnvTlsBootstrapOptions,
+): Promise<https.Server | null> {
   if (process.env.TLS_ACME_ENABLED !== 'true') return null;
   const log = options.log ?? createLogger('acme_rotation', { 'tls.mode': 'acme' });
   const domains = readCsvEnv('TLS_DOMAINS');
@@ -885,7 +913,9 @@ export async function bootstrapTlsFromEnv(app: express.Express, options: EnvTlsB
   const certPath = process.env.TLS_CERT_PATH;
   const keyPath = process.env.TLS_KEY_PATH;
   if (domains.length === 0 || !email || !certPath || !keyPath) {
-    throw new Error('TLS_ACME_ENABLED requires TLS_DOMAINS, TLS_ACME_EMAIL, TLS_CERT_PATH, and TLS_KEY_PATH');
+    throw new Error(
+      'TLS_ACME_ENABLED requires TLS_DOMAINS, TLS_ACME_EMAIL, TLS_CERT_PATH, and TLS_KEY_PATH',
+    );
   }
 
   const webroot = process.env.TLS_ACME_WEBROOT ?? path.join(os.tmpdir(), 'verinode-acme');
@@ -898,8 +928,10 @@ export async function bootstrapTlsFromEnv(app: express.Express, options: EnvTlsB
     chainPath: process.env.TLS_CHAIN_PATH,
   });
   const issuer = new AcmeClientIssuer({
-    directoryUrl: process.env.TLS_ACME_DIRECTORY_URL ?? 'https://acme-v02.api.letsencrypt.org/directory',
-    accountKeyPath: process.env.TLS_ACME_ACCOUNT_KEY_PATH ?? path.join(path.dirname(keyPath), 'acme-account.key'),
+    directoryUrl:
+      process.env.TLS_ACME_DIRECTORY_URL ?? 'https://acme-v02.api.letsencrypt.org/directory',
+    accountKeyPath:
+      process.env.TLS_ACME_ACCOUNT_KEY_PATH ?? path.join(path.dirname(keyPath), 'acme-account.key'),
     challengeStore,
     termsOfServiceAgreed: process.env.TLS_ACME_TERMS_AGREED === 'true',
   });
@@ -935,11 +967,16 @@ export async function bootstrapTlsFromEnv(app: express.Express, options: EnvTlsB
   manager.start();
 
   const tlsPort = process.env.TLS_PORT ?? '3443';
-  const server = https.createServer({
-    SNICallback: reloader.SNICallback.bind(reloader),
-    secureContext: initialContext,
-  }, app);
-  server.listen(Number(tlsPort), () => log.log(`HTTPS server running on port ${tlsPort}`, { 'tls.port': Number(tlsPort) }));
+  const server = https.createServer(
+    {
+      SNICallback: reloader.SNICallback.bind(reloader),
+      secureContext: initialContext,
+    },
+    app,
+  );
+  server.listen(Number(tlsPort), () =>
+    log.log(`HTTPS server running on port ${tlsPort}`, { 'tls.port': Number(tlsPort) }),
+  );
 
   app.locals.tlsCertificateStore = store;
   app.locals.tlsCertificateReloader = reloader;
@@ -953,7 +990,10 @@ export async function bootstrapTlsFromEnv(app: express.Express, options: EnvTlsB
  * Bootstrap TLS/ACME from the centralized config system,
  * falling back to environment variables and defaults.
  */
-export async function bootstrapTlsFromConfig(app: express.Express, options: EnvTlsBootstrapOptions): Promise<https.Server | null> {
+export async function bootstrapTlsFromConfig(
+  app: express.Express,
+  options: EnvTlsBootstrapOptions,
+): Promise<https.Server | null> {
   let tlsCfg: any = {};
   try {
     const mgr = getConfigManager();
@@ -986,7 +1026,8 @@ export async function bootstrapTlsFromConfig(app: express.Express, options: EnvT
   });
   const issuer = new AcmeClientIssuer({
     directoryUrl: acmeCfg.directoryUrl ?? 'https://acme-v02.api.letsencrypt.org/directory',
-    accountKeyPath: process.env.TLS_ACME_ACCOUNT_KEY_PATH ?? path.join(path.dirname(keyPath), 'acme-account.key'),
+    accountKeyPath:
+      process.env.TLS_ACME_ACCOUNT_KEY_PATH ?? path.join(path.dirname(keyPath), 'acme-account.key'),
     challengeStore,
     termsOfServiceAgreed: acmeCfg.termsOfServiceAgreed === true,
   });
@@ -1019,11 +1060,16 @@ export async function bootstrapTlsFromConfig(app: express.Express, options: EnvT
   manager.start();
 
   const tlsPort = process.env.TLS_PORT ?? '3443';
-  const server = https.createServer({
-    SNICallback: reloader.SNICallback.bind(reloader),
-    secureContext: initialContext,
-  }, app);
-  server.listen(Number(tlsPort), () => log.log(`[tls-acme] HTTPS server running on port ${tlsPort}`));
+  const server = https.createServer(
+    {
+      SNICallback: reloader.SNICallback.bind(reloader),
+      secureContext: initialContext,
+    },
+    app,
+  );
+  server.listen(Number(tlsPort), () =>
+    log.log(`[tls-acme] HTTPS server running on port ${tlsPort}`),
+  );
 
   app.locals.tlsCertificateStore = store;
   app.locals.tlsCertificateReloader = reloader;
@@ -1044,7 +1090,10 @@ function ensureTrailingNewline(value: string): string {
 
 async function atomicWriteFile(targetPath: string, content: string, mode: number): Promise<void> {
   await fsp.mkdir(path.dirname(targetPath), { recursive: true });
-  const tmp = path.join(path.dirname(targetPath), `.${path.basename(targetPath)}.${process.pid}.${Date.now()}.tmp`);
+  const tmp = path.join(
+    path.dirname(targetPath),
+    `.${path.basename(targetPath)}.${process.pid}.${Date.now()}.tmp`,
+  );
   const handle = await fsp.open(tmp, 'w', mode);
   try {
     await handle.writeFile(content, 'utf8');

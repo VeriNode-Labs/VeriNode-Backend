@@ -5,7 +5,11 @@ async function run() {
   const objective = SYSTEM_SLO_OBJECTIVES[0];
   const alerts: SloEvaluation[] = [];
   const monitor = new BurnRateMonitor({
-    alertSink: { notify: (evaluation) => { alerts.push(evaluation); } },
+    alertSink: {
+      notify: (evaluation) => {
+        alerts.push(evaluation);
+      },
+    },
     now: () => new Date('2026-07-25T00:00:00.000Z'),
   });
 
@@ -34,7 +38,10 @@ async function run() {
   assert.equal(warning.violatedThresholds[0].severity, 'warning');
 
   assert.throws(
-    () => monitor.evaluate({ ...objective, target: 1 }, [{ window: '5m', goodEvents: 1, totalEvents: 1 }]),
+    () =>
+      monitor.evaluate({ ...objective, target: 1 }, [
+        { window: '5m', goodEvents: 1, totalEvents: 1 },
+      ]),
     /target/,
   );
   assert.throws(

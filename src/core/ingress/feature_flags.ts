@@ -10,7 +10,11 @@ export interface FeatureFlag {
   owner?: string;
 }
 
-export type FeatureFlagChangeCallback = (key: string, status: FeatureFlagStatus, oldStatus: FeatureFlagStatus) => void;
+export type FeatureFlagChangeCallback = (
+  key: string,
+  status: FeatureFlagStatus,
+  oldStatus: FeatureFlagStatus,
+) => void;
 
 const FLAG_REGISTRY = new Map<string, FeatureFlag>();
 const FLAG_CACHE = new Map<string, FeatureFlagStatus>();
@@ -126,7 +130,11 @@ export function onFeatureFlagChange(key: string, callback: FeatureFlagChangeCall
   };
 }
 
-function notifyListeners(key: string, newStatus: FeatureFlagStatus, oldStatus: FeatureFlagStatus): void {
+function notifyListeners(
+  key: string,
+  newStatus: FeatureFlagStatus,
+  oldStatus: FeatureFlagStatus,
+): void {
   const listeners = CHANGE_LISTENERS.get(key);
   if (listeners) {
     for (const cb of listeners) {

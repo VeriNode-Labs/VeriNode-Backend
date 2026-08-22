@@ -1,8 +1,4 @@
-import {
-  RpcClient,
-  ContractOperation,
-  PreflightReport,
-} from './rpc_client';
+import { RpcClient, ContractOperation, PreflightReport } from './rpc_client';
 import { TTL_EXTENSION_INSTRUCTIONS, CRITICAL_DATA_KEYS } from '../contracts/verification_contract';
 import { createLogger } from '../diagnostics/logger';
 
@@ -45,7 +41,10 @@ export class PreflightAnalyzer {
     let estimatedGas = Math.floor(instructions * 1.5) + 50000;
 
     // Add TTL extension cost for predicted storage access
-    const storageKeys = await this.getStorageAccessPattern(operation.contractId, operation.args[0] || '');
+    const storageKeys = await this.getStorageAccessPattern(
+      operation.contractId,
+      operation.args[0] || '',
+    );
     estimatedGas += storageKeys.length * TTL_EXTENSION_INSTRUCTIONS;
 
     // Clamp to the Soroban hard limit

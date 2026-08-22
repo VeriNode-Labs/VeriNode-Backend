@@ -62,24 +62,39 @@ function generateCert(
   const certFile = join(workdir, `${serviceName}.crt`);
   const cfgFile = join(workdir, `${serviceName}.cnf`);
 
-  writeFileSync(cfgFile, [
-    '[req]',
-    'distinguished_name=req_distinguished_name',
-    'x509_extensions=v3_req',
-    'prompt=no',
-    '[req_distinguished_name]',
-    `CN=${serviceName}`,
-    '[v3_req]',
-    `subjectAltName=URI:${spiffeId}`,
-  ].join('\n'));
+  writeFileSync(
+    cfgFile,
+    [
+      '[req]',
+      'distinguished_name=req_distinguished_name',
+      'x509_extensions=v3_req',
+      'prompt=no',
+      '[req_distinguished_name]',
+      `CN=${serviceName}`,
+      '[v3_req]',
+      `subjectAltName=URI:${spiffeId}`,
+    ].join('\n'),
+  );
 
-  execFileSync('openssl', [
-    'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
-    '-days', String(days),
-    '-keyout', keyFile,
-    '-out', certFile,
-    '-config', cfgFile,
-  ], { stdio: 'ignore' });
+  execFileSync(
+    'openssl',
+    [
+      'req',
+      '-x509',
+      '-newkey',
+      'rsa:2048',
+      '-nodes',
+      '-days',
+      String(days),
+      '-keyout',
+      keyFile,
+      '-out',
+      certFile,
+      '-config',
+      cfgFile,
+    ],
+    { stdio: 'ignore' },
+  );
 
   return { certFile, keyFile, spiffeId };
 }
@@ -162,7 +177,9 @@ function mtlsRequest(
       } as https.RequestOptions,
       (res) => {
         let body = '';
-        res.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+        res.on('data', (chunk: Buffer) => {
+          body += chunk.toString();
+        });
         res.on('end', () => resolve({ status: res.statusCode ?? 0, body }));
       },
     );
@@ -183,7 +200,7 @@ function listenRandom(server: https.Server): Promise<number> {
 }
 
 function closeServer(server: https.Server): Promise<void> {
-  return new Promise((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
+  return new Promise((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
 }
 
 // ---------------------------------------------------------------------------
@@ -239,7 +256,11 @@ async function runIntegrationTests(): Promise<void> {
       const clusterCert = {
         subjectaltname: 'URI:spiffe://cluster.local/ns/verinode/sa/api',
       } as tls.PeerCertificate;
-      assert.equal(extractVeriNodeServiceName(clusterCert), null, 'cluster.local SPIFFE IDs should not match');
+      assert.equal(
+        extractVeriNodeServiceName(clusterCert),
+        null,
+        'cluster.local SPIFFE IDs should not match',
+      );
     }
 
     // -----------------------------------------------------------------------
@@ -312,7 +333,11 @@ async function runIntegrationTests(): Promise<void> {
       try {
         // service-c's request: TLS is valid (CA trusts service-c) but service identity rejected
         const result = await mtlsRequest(portB2, svcC.certFile, svcC.keyFile, svcB.certFile);
-        assert.equal(result.status, 403, `Expected 403 for unauthorized service, got ${result.status}`);
+        assert.equal(
+          result.status,
+          403,
+          `Expected 403 for unauthorized service, got ${result.status}`,
+        );
         const body = JSON.parse(result.body);
         assert.equal(body.error, 'peer SPIFFE identity not allowed');
         // invalidity counter should be non-zero
@@ -360,9 +385,9 @@ async function runIntegrationTests(): Promise<void> {
       });
 
       // Record several latency observations
-      managerLatency.recordHandshakeLatency(3);   // <= 5ms bucket
-      managerLatency.recordHandshakeLatency(12);  // <= 25ms bucket
-      managerLatency.recordHandshakeLatency(60);  // <= 100ms bucket
+      managerLatency.recordHandshakeLatency(3); // <= 5ms bucket
+      managerLatency.recordHandshakeLatency(12); // <= 25ms bucket
+      managerLatency.recordHandshakeLatency(60); // <= 100ms bucket
 
       const snap = managerLatency.metricsSnapshot();
       const h = snap.handshakeLatencyBuckets;
@@ -426,8 +451,16 @@ async function runIntegrationTests(): Promise<void> {
         minSecondsUntilExpiry: 60,
         reloadPollMs: 1_000,
       });
-      assert.ok(issues.includes('allowedSpiffeIds must list explicit SPIFFE identities when mTLS is enabled'));
-      assert.ok(issues.includes('certMaxValidityMs must not exceed the 24-hour workload certificate policy'));
+      assert.ok(
+        issues.includes(
+          'allowedSpiffeIds must list explicit SPIFFE identities when mTLS is enabled',
+        ),
+      );
+      assert.ok(
+        issues.includes(
+          'certMaxValidityMs must not exceed the 24-hour workload certificate policy',
+        ),
+      );
     }
 
     // -----------------------------------------------------------------------
@@ -482,8 +515,16 @@ async function runIntegrationTests(): Promise<void> {
         const changed = managerRotated.reloadIfChanged();
         assert.equal(changed, true, 'reloadIfChanged should return true after cert update');
         const second = managerRotated.current!;
-        assert.notEqual(second.serialNumber, firstSerial, 'new cert should have a different serial number');
-        assert.equal(second.spiffeIds[0], replaced.spiffeId, 'new cert should have the updated SPIFFE ID');
+        assert.notEqual(
+          second.serialNumber,
+          firstSerial,
+          'new cert should have a different serial number',
+        );
+        assert.equal(
+          second.spiffeIds[0],
+          replaced.spiffeId,
+          'new cert should have the updated SPIFFE ID',
+        );
       } finally {
         rmSync(rotDir, { recursive: true, force: true });
       }
@@ -503,7 +544,6 @@ async function runIntegrationTests(): Promise<void> {
       });
       assert.equal(issues.length, 0, 'disabled mTLS should not produce policy warnings');
     }
-
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

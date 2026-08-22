@@ -6,10 +6,7 @@
 
 // ── Permissions ───────────────────────────────────────────────────────────────
 
-export type AuditPermission =
-  | 'config:read'
-  | 'config:baseline:write'
-  | 'config:rollback:write';
+export type AuditPermission = 'config:read' | 'config:baseline:write' | 'config:rollback:write';
 
 export interface ActorContext {
   /** Token subject, or 'system' for SIGHUP/file-watch, or 'remote' for etcd/consul. */
@@ -41,15 +38,15 @@ export const CRITICAL_SECTIONS = new Set<string>(['db', 'mtls', 'tls', 'staking'
 // ── Audit Entry ───────────────────────────────────────────────────────────────
 
 export interface AuditEntry {
-  entryId: string;             // UUID v4
-  configPath: string;          // dot-separated key path, e.g. 'db.host'
+  entryId: string; // UUID v4
+  configPath: string; // dot-separated key path, e.g. 'db.host'
   previousValue: unknown;
   newValue: unknown;
   actor: string;
-  sourceIp: string | null;     // IPv4/IPv6 string or null
+  sourceIp: string | null; // IPv4/IPv6 string or null
   changedAt: Date;
   changeSource: ChangeSource;
-  hmacDigest: string;          // 64-char lowercase hex SHA-256 HMAC
+  hmacDigest: string; // 64-char lowercase hex SHA-256 HMAC
 }
 
 /** Partial audit entry before HMAC is computed (input to AuditLogger.write). */
@@ -61,8 +58,8 @@ export type BaselineStatus = 'active' | 'superseded' | 'expired';
 
 export interface Baseline {
   id: string;
-  snapshotJson: string;   // deterministically serialized (lexicographic keys)
-  sha256Hash: string;     // hex SHA-256 of snapshotJson
+  snapshotJson: string; // deterministically serialized (lexicographic keys)
+  sha256Hash: string; // hex SHA-256 of snapshotJson
   actor: string;
   createdAt: Date;
   status: BaselineStatus;
@@ -71,7 +68,7 @@ export interface Baseline {
 // ── Drift ─────────────────────────────────────────────────────────────────────
 
 export interface DriftedKey {
-  path: string;              // full dot-separated key path
+  path: string; // full dot-separated key path
   baselineValue: unknown;
   liveValue: unknown;
   severity: DriftSeverity;
@@ -115,7 +112,7 @@ export interface AuditQueryFilters {
   changeSource?: ChangeSource;
   fromTimestamp?: Date;
   toTimestamp?: Date;
-  page: number;     // 1-based
+  page: number; // 1-based
   pageSize: number; // clamped to [1, 200]
 }
 
@@ -130,8 +127,8 @@ export interface AuditQueryResult {
 
 export interface RollbackResult {
   baselineId: string;
-  restored: string[];  // key paths successfully rolled back
-  skipped: string[];   // key paths that failed and were skipped
+  restored: string[]; // key paths successfully rolled back
+  skipped: string[]; // key paths that failed and were skipped
   dryRun: boolean;
 }
 

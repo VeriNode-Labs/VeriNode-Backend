@@ -3,7 +3,12 @@ import { loadBaselineSnapshot, ExampleConfigBaselineSource } from './baseline';
 import { computeDriftReport, pickCriticalPrefix } from './diff';
 import { DriftStorage } from './storage';
 import { CriticalDriftPolicy, ConfigDriftAlert } from './types';
-import { HttpPagerDutyClient, buildAlertIfCritical, PagerDutyOptions, PagerDutyClient } from './pagerduty';
+import {
+  HttpPagerDutyClient,
+  buildAlertIfCritical,
+  PagerDutyOptions,
+  PagerDutyClient,
+} from './pagerduty';
 
 export interface ConfigDriftAuditorOptions {
   intervalMs?: number;
@@ -100,19 +105,27 @@ export class ConfigDriftAuditor {
 export function createConfigDriftAuditorFromEnv(args: {
   storage?: DriftStorage;
 }): ConfigDriftAuditor {
-  const enabledPagerDuty = process.env.VERINODE_DRIFT_PAGERDUTY_ENABLED === 'true' || process.env.VERINODE_DRIFT_PAGERDUTY_ENABLED === '1';
+  const enabledPagerDuty =
+    process.env.VERINODE_DRIFT_PAGERDUTY_ENABLED === 'true' ||
+    process.env.VERINODE_DRIFT_PAGERDUTY_ENABLED === '1';
   const routingKey = process.env.VERINODE_DRIFT_PAGERDUTY_ROUTING_KEY ?? '';
 
-  const criticalKeyPrefixes = (process.env.VERINODE_DRIFT_CRITICAL_PREFIXES ?? 'db,mtls,tls,app,remote')
+  const criticalKeyPrefixes = (
+    process.env.VERINODE_DRIFT_CRITICAL_PREFIXES ?? 'db,mtls,tls,app,remote'
+  )
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
 
-  const intervalMs = Number(process.env.VERINODE_DRIFT_SNAPSHOT_INTERVAL_MS ?? String(5 * 60 * 1000));
+  const intervalMs = Number(
+    process.env.VERINODE_DRIFT_SNAPSHOT_INTERVAL_MS ?? String(5 * 60 * 1000),
+  );
 
   let pagerDutyClient: PagerDutyClient | undefined = undefined;
   const criticalPolicy: CriticalDriftPolicy = {
-    enabled: process.env.VERINODE_DRIFT_ALERTS_ENABLED === 'true' || process.env.VERINODE_DRIFT_ALERTS_ENABLED === '1',
+    enabled:
+      process.env.VERINODE_DRIFT_ALERTS_ENABLED === 'true' ||
+      process.env.VERINODE_DRIFT_ALERTS_ENABLED === '1',
     criticalKeyPrefixes,
   };
 
@@ -132,4 +145,3 @@ export function createConfigDriftAuditorFromEnv(args: {
     criticalPolicy,
   });
 }
-

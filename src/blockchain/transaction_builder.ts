@@ -32,7 +32,10 @@ export class TransactionBuilder {
   private log = createLogger('transaction_builder');
   private retryDelays: number[];
 
-  constructor(private rpcClient: RpcClient, retryDelays?: number[]) {
+  constructor(
+    private rpcClient: RpcClient,
+    retryDelays?: number[],
+  ) {
     this.retryDelays = retryDelays ?? DEFAULT_RETRY_DELAYS_MS;
   }
 

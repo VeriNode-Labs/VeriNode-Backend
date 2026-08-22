@@ -40,7 +40,10 @@ function isObject(value: any): boolean {
 /**
  * Parse environment variable to appropriate type
  */
-export function parseEnvValue(value: string | undefined, targetType: 'string' | 'number' | 'boolean' | 'array'): any {
+export function parseEnvValue(
+  value: string | undefined,
+  targetType: 'string' | 'number' | 'boolean' | 'array',
+): any {
   if (value === undefined) return undefined;
 
   switch (targetType) {
@@ -49,7 +52,10 @@ export function parseEnvValue(value: string | undefined, targetType: 'string' | 
     case 'boolean':
       return ['true', '1', 'yes'].includes(value.toLowerCase());
     case 'array':
-      return value.split(',').map((v) => v.trim()).filter(Boolean);
+      return value
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean);
     default:
       return value;
   }
@@ -128,7 +134,7 @@ export function deepClone<T>(obj: T): T {
   }
 
   if (Array.isArray(obj)) {
-    return obj.map(item => deepClone(item)) as any;
+    return obj.map((item) => deepClone(item)) as any;
   }
 
   const result: any = {};

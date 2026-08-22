@@ -56,12 +56,7 @@ export class PostgresJobStore implements JobStore {
       `INSERT INTO distributed_jobs (job_type, payload, run_at, max_retries)
        VALUES ($1, $2::jsonb, $3, $4)
        RETURNING id`,
-      [
-        jobType,
-        JSON.stringify(payload),
-        options.runAt ?? new Date(),
-        maxRetries,
-      ],
+      [jobType, JSON.stringify(payload), options.runAt ?? new Date(), maxRetries],
     );
     return result.rows[0].id;
   }
@@ -133,11 +128,7 @@ export class PostgresJobStore implements JobStore {
 
   // ── Renew Lease ──────────────────────────────────────────────────────────
 
-  async renewLease(
-    jobId: string,
-    workerId: string,
-    leaseDurationMs: number,
-  ): Promise<boolean> {
+  async renewLease(jobId: string, workerId: string, leaseDurationMs: number): Promise<boolean> {
     const leaseSeconds = Math.floor(leaseDurationMs / 1000);
     const result = await this.db.query(
       `UPDATE distributed_jobs
