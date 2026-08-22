@@ -64,4 +64,3 @@ export class DriftStorage {
     return this.inMemory.length ? this.inMemory[this.inMemory.length - 1] : null;
   }
 }
-

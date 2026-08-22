@@ -12,7 +12,7 @@ const log = createLogger('config_loader');
  */
 function findActualPath(schema: any, path: string): string[] | null {
   const target = path.replace(/[\._]/g, '').toLowerCase();
-  
+
   function search(currentSchema: any, currentPath: string[], targetStr: string): string[] | null {
     const currentStr = currentPath.join('').toLowerCase();
     if (currentStr === targetStr) {
@@ -34,7 +34,10 @@ function findActualPath(schema: any, path: string): string[] | null {
 /**
  * Helper to find the type of a dot-separated key path in a JSON Schema
  */
-function getSchemaTypeForPath(schema: any, path: string): 'string' | 'number' | 'boolean' | 'array' | undefined {
+function getSchemaTypeForPath(
+  schema: any,
+  path: string,
+): 'string' | 'number' | 'boolean' | 'array' | undefined {
   const keys = path.split('.');
   let current = schema;
   for (const key of keys) {
@@ -88,7 +91,7 @@ export class ConfigLoader {
    */
   addSource(source: ConfigSource): this {
     // Insert in priority order
-    const index = this.sources.findIndex(s => s.priority > source.priority);
+    const index = this.sources.findIndex((s) => s.priority > source.priority);
     if (index === -1) {
       this.sources.push(source);
     } else {
@@ -119,11 +122,11 @@ export class ConfigLoader {
       if (key.startsWith(prefix + '_')) {
         const configKey = normalizeEnvKey(key);
         const schema = this.validator['schema'] || mainSchema;
-        
+
         const actualPath = findActualPath(schema, configKey);
         const targetPath = actualPath ? actualPath.join('.') : configKey;
         const targetType = getSchemaTypeForPath(schema, targetPath);
-        
+
         let parsedValue: any = value;
         if (targetType) {
           parsedValue = parseEnvValue(value, targetType);
@@ -134,7 +137,7 @@ export class ConfigLoader {
             parsedValue = Number(value);
           }
         }
-        
+
         if (actualPath) {
           setIn(result, actualPath, parsedValue);
         } else {
@@ -201,13 +204,13 @@ export class ConfigLoader {
   private async loadRemoteEtcd(options: any): Promise<Record<string, any>> {
     const endpoints = options.endpoints || ['http://localhost:2379'];
     const keyPrefix = options.keyPrefix || 'verinode/config';
-    
+
     const normalizedPrefix = keyPrefix.endsWith('/') ? keyPrefix : `${keyPrefix}/`;
     const rangeEnd = getRangeEnd(normalizedPrefix);
-    
+
     const body = {
       key: Buffer.from(normalizedPrefix).toString('base64'),
-      range_end: Buffer.from(rangeEnd).toString('base64')
+      range_end: Buffer.from(rangeEnd).toString('base64'),
     };
 
     let lastError: Error | null = null;
@@ -217,24 +220,24 @@ export class ConfigLoader {
         const response = await fetch(url, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
           },
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(5000)
+          signal: AbortSignal.timeout(5000),
         });
-        
+
         if (!response.ok) {
           throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
         }
-        
+
         const data = (await response.json()) as any;
         const result: Record<string, any> = {};
-        
+
         if (data.kvs && Array.isArray(data.kvs)) {
           for (const kv of data.kvs) {
             const fullKey = Buffer.from(kv.key, 'base64').toString('utf8');
             const valueStr = kv.value ? Buffer.from(kv.value, 'base64').toString('utf8') : '';
-            
+
             let relativeKey = fullKey;
             if (fullKey.startsWith(normalizedPrefix)) {
               relativeKey = fullKey.substring(normalizedPrefix.length);
@@ -253,7 +256,7 @@ export class ConfigLoader {
               }
               continue;
             }
-            
+
             const configPath = relativeKey.replace(/\//g, '.');
             let parsedVal: any = valueStr;
             try {
@@ -267,10 +270,13 @@ export class ConfigLoader {
         return result;
       } catch (err: any) {
         lastError = err;
-        log.warn('Failed to fetch from etcd endpoint', { 'server.address': endpoint, 'error.message': err.message });
+        log.warn('Failed to fetch from etcd endpoint', {
+          'server.address': endpoint,
+          'error.message': err.message,
+        });
       }
     }
-    
+
     throw lastError || new Error('All etcd endpoints failed');
   }
 
@@ -278,38 +284,38 @@ export class ConfigLoader {
     const address = options.address || 'localhost:8500';
     const keyPrefix = options.keyPrefix || 'verinode/config';
     const token = options.token;
-    
+
     const normalizedPrefix = keyPrefix.endsWith('/') ? keyPrefix : `${keyPrefix}/`;
     const baseUrl = address.startsWith('http') ? address : `http://${address}`;
     const url = `${baseUrl.replace(/\/$/, '')}/v1/kv/${normalizedPrefix}?recurse=true`;
-    
+
     const headers: Record<string, string> = {};
     if (token) {
       headers['X-Consul-Token'] = token;
     }
-    
+
     try {
       const response = await fetch(url, {
         method: 'GET',
         headers,
-        signal: AbortSignal.timeout(5000)
+        signal: AbortSignal.timeout(5000),
       });
-      
+
       if (response.status === 404) {
         return {};
       }
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
       }
-      
+
       const kvs = (await response.json()) as any[];
       const result: Record<string, any> = {};
-      
+
       for (const kv of kvs) {
         const fullKey = kv.Key;
         const valueStr = kv.Value ? Buffer.from(kv.Value, 'base64').toString('utf8') : '';
-        
+
         let relativeKey = fullKey;
         if (fullKey.startsWith(normalizedPrefix)) {
           relativeKey = fullKey.substring(normalizedPrefix.length);
@@ -317,7 +323,7 @@ export class ConfigLoader {
         if (relativeKey.startsWith('/')) {
           relativeKey = relativeKey.substring(1);
         }
-        
+
         if (!relativeKey) {
           try {
             const parsed = JSON.parse(valueStr);
@@ -329,7 +335,7 @@ export class ConfigLoader {
           }
           continue;
         }
-        
+
         const configPath = relativeKey.replace(/\//g, '.');
         let parsedVal: any = valueStr;
         try {
@@ -339,10 +345,13 @@ export class ConfigLoader {
         }
         setIn(result, configPath, parsedVal);
       }
-      
+
       return result;
     } catch (err: any) {
-      log.warn('Failed to fetch from Consul address', { 'server.address': address, 'error.message': err.message });
+      log.warn('Failed to fetch from Consul address', {
+        'server.address': address,
+        'error.message': err.message,
+      });
       throw err;
     }
   }
@@ -379,7 +388,10 @@ export class ConfigLoader {
         }
       } catch (err) {
         errors.push(err as Error);
-        log.warn('Failed to load configuration source', { 'config.source': source.name, 'error.message': (err as Error).message });
+        log.warn('Failed to load configuration source', {
+          'config.source': source.name,
+          'error.message': (err as Error).message,
+        });
       }
     }
 
@@ -390,7 +402,7 @@ export class ConfigLoader {
     const result = this.validator.validate(merged);
 
     if (!result.valid) {
-      const errorMessages = result.errors.map(e => `${e.path}: ${e.message}`).join('; ');
+      const errorMessages = result.errors.map((e) => `${e.path}: ${e.message}`).join('; ');
       throw new Error(`Configuration validation failed: ${errorMessages}`);
     }
 
@@ -422,5 +434,3 @@ export class ConfigLoader {
     return [...this.sources];
   }
 }
-
-

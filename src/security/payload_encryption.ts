@@ -11,7 +11,9 @@ const MARKER = '__verinode_e2ee';
 
 export interface KeyProvider {
   getActiveKey(): Promise<PayloadEncryptionKey> | PayloadEncryptionKey;
-  getKey(keyId: string): Promise<PayloadEncryptionKey | undefined> | PayloadEncryptionKey | undefined;
+  getKey(
+    keyId: string,
+  ): Promise<PayloadEncryptionKey | undefined> | PayloadEncryptionKey | undefined;
 }
 
 export interface PayloadEncryptionKey {
@@ -38,18 +40,29 @@ export interface PayloadEncryptionOptions {
 type JsonObject = Record<string, unknown>;
 
 const meter = metrics.getMeter('payload_encryption', '1.0.0');
-export const payloadEncryptionLatencyMs = meter.createHistogram('payload_encryption.operation_latency_ms', {
-  description: 'Latency for sensitive payload field encrypt/decrypt operations',
-  unit: 'ms',
-  advice: { explicitBucketBoundaries: [1, 5, 10, 25, 50, 100] },
-});
-export const payloadEncryptionFailuresTotal = meter.createCounter('payload_encryption.failures_total', {
-  description: 'Total payload encryption/decryption failures',
-});
+export const payloadEncryptionLatencyMs = meter.createHistogram(
+  'payload_encryption.operation_latency_ms',
+  {
+    description: 'Latency for sensitive payload field encrypt/decrypt operations',
+    unit: 'ms',
+    advice: { explicitBucketBoundaries: [1, 5, 10, 25, 50, 100] },
+  },
+);
+export const payloadEncryptionFailuresTotal = meter.createCounter(
+  'payload_encryption.failures_total',
+  {
+    description: 'Total payload encryption/decryption failures',
+  },
+);
 
 export class StaticKeyProvider implements KeyProvider {
-  constructor(private readonly activeKey: PayloadEncryptionKey, private readonly keys: PayloadEncryptionKey[] = []) {}
-  getActiveKey(): PayloadEncryptionKey { return this.activeKey; }
+  constructor(
+    private readonly activeKey: PayloadEncryptionKey,
+    private readonly keys: PayloadEncryptionKey[] = [],
+  ) {}
+  getActiveKey(): PayloadEncryptionKey {
+    return this.activeKey;
+  }
   getKey(keyId: string): PayloadEncryptionKey | undefined {
     return [this.activeKey, ...this.keys].find((entry) => entry.keyId === keyId);
   }
@@ -85,7 +98,11 @@ export class PayloadEncryptionService {
     }
   }
 
-  private async visitPath(node: unknown, path: string[], operation: 'encrypt' | 'decrypt'): Promise<void> {
+  private async visitPath(
+    node: unknown,
+    path: string[],
+    operation: 'encrypt' | 'decrypt',
+  ): Promise<void> {
     if (node === null || node === undefined) return;
     if (Array.isArray(node)) {
       await Promise.all(node.map((child) => this.visitPath(child, path, operation)));
@@ -107,21 +124,37 @@ export class PayloadEncryptionService {
     const activeKey = await this.options.keyProvider.getActiveKey();
     const key = normalizeKey(activeKey.key);
     const nonce = randomBytes(NONCE_BYTES);
-    const cipher = createCipheriv(ALGORITHM, key as any, nonce as any, { authTagLength: TAG_BYTES });
-    cipher.setAAD(this.aad(activeKey.keyId, fieldPath) as any);
+    const cipher = createCipheriv(ALGORITHM, key, nonce, { authTagLength: TAG_BYTES });
+    cipher.setAAD(this.aad(activeKey.keyId, fieldPath));
     const plaintext = Buffer.from(JSON.stringify(value), 'utf8');
-    const ciphertext = Buffer.concat([cipher.update(plaintext as any) as any, cipher.final() as any]);
-    return { [MARKER]: true, version: ENVELOPE_VERSION, alg: 'AES-256-GCM', keyId: activeKey.keyId, nonce: nonce.toString('base64url'), ciphertext: ciphertext.toString('base64url'), tag: cipher.getAuthTag().toString('base64url') } satisfies EncryptedFieldEnvelope;
+    const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+    return {
+      [MARKER]: true,
+      version: ENVELOPE_VERSION,
+      alg: 'AES-256-GCM',
+      keyId: activeKey.keyId,
+      nonce: nonce.toString('base64url'),
+      ciphertext: ciphertext.toString('base64url'),
+      tag: cipher.getAuthTag().toString('base64url'),
+    } satisfies EncryptedFieldEnvelope;
   }
 
   private async decryptValue(value: unknown, fieldPath: string): Promise<unknown> {
     if (!isEncryptedEnvelope(value)) return value;
     const encryptionKey = await this.options.keyProvider.getKey(value.keyId);
     if (!encryptionKey) throw new Error(`No payload encryption key found for keyId ${value.keyId}`);
-    const decipher = createDecipheriv(ALGORITHM, normalizeKey(encryptionKey.key) as any, Buffer.from(value.nonce, 'base64url') as any, { authTagLength: TAG_BYTES });
-    decipher.setAAD(this.aad(value.keyId, fieldPath) as any);
-    decipher.setAuthTag(Buffer.from(value.tag, 'base64url') as any);
-    const plaintext = Buffer.concat([decipher.update(Buffer.from(value.ciphertext, 'base64url') as any) as any, decipher.final() as any]);
+    const decipher = createDecipheriv(
+      ALGORITHM,
+      normalizeKey(encryptionKey.key),
+      Buffer.from(value.nonce, 'base64url'),
+      { authTagLength: TAG_BYTES },
+    );
+    decipher.setAAD(this.aad(value.keyId, fieldPath));
+    decipher.setAuthTag(Buffer.from(value.tag, 'base64url'));
+    const plaintext = Buffer.concat([
+      decipher.update(Buffer.from(value.ciphertext, 'base64url')),
+      decipher.final(),
+    ]);
     return JSON.parse(plaintext.toString('utf8'));
   }
 
@@ -131,7 +164,10 @@ export class PayloadEncryptionService {
 }
 
 function parsePath(path: string): string[] {
-  const parts = path.split('.').map((part) => part.trim()).filter(Boolean);
+  const parts = path
+    .split('.')
+    .map((part) => part.trim())
+    .filter(Boolean);
   if (parts.length === 0) throw new Error('Sensitive field path cannot be empty');
   return parts;
 }
@@ -139,15 +175,27 @@ function parsePath(path: string): string[] {
 function normalizeKey(key: Buffer | string): Buffer {
   const raw = Buffer.isBuffer(key) ? key : Buffer.from(key, 'base64');
   if (raw.length === KEY_BYTES) return raw;
-  return createHash('sha256').update(raw as any).digest();
+  return createHash('sha256').update(raw).digest();
 }
 
-function isObject(value: unknown): value is JsonObject { return typeof value === 'object' && value !== null && !Array.isArray(value); }
-function clone<T>(value: T): T { return value === undefined ? value : JSON.parse(JSON.stringify(value)); }
+function isObject(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+function clone<T>(value: T): T {
+  return value === undefined ? value : JSON.parse(JSON.stringify(value));
+}
 
 export function isEncryptedEnvelope(value: unknown): value is EncryptedFieldEnvelope {
   if (!isObject(value)) return false;
   const marker = value[MARKER];
   if (typeof marker !== 'boolean') return false;
-  return timingSafeEqual(Buffer.from(marker ? '1' : '0') as any, Buffer.from('1') as any) && value.version === ENVELOPE_VERSION && value.alg === 'AES-256-GCM' && typeof value.keyId === 'string' && typeof value.nonce === 'string' && typeof value.ciphertext === 'string' && typeof value.tag === 'string';
+  return (
+    timingSafeEqual(Buffer.from(marker ? '1' : '0'), Buffer.from('1')) &&
+    value.version === ENVELOPE_VERSION &&
+    value.alg === 'AES-256-GCM' &&
+    typeof value.keyId === 'string' &&
+    typeof value.nonce === 'string' &&
+    typeof value.ciphertext === 'string' &&
+    typeof value.tag === 'string'
+  );
 }

@@ -1,5 +1,11 @@
 import type { Request, RequestHandler, Response, NextFunction } from 'express';
-import { isEnabled, getStatus, registerFlags, initFeatureFlags, FeatureFlag } from './feature_flags';
+import {
+  isEnabled,
+  getStatus,
+  registerFlags,
+  initFeatureFlags,
+  FeatureFlag,
+} from './feature_flags';
 import { initCapacityShedder, getCurrentLevel, onSheddingChange } from './capacity_shedder';
 import type { SheddingLevel, MetricSnapshot } from './capacity_shedder';
 
@@ -25,25 +31,33 @@ export function requireFlag(flagKey: string, options: FlagCheckOptions = {}): Re
       return next();
     }
     const { statusCode = 503, degradeResponse } = options;
-    res.status(statusCode).json(degradeResponse || { ...DEFAULT_DEGRADE_RESPONSE, feature: flagKey });
+    res
+      .status(statusCode)
+      .json(degradeResponse || { ...DEFAULT_DEGRADE_RESPONSE, feature: flagKey });
   };
 }
 
-export function degradeOnLevel(minLevel: SheddingLevel, options: FlagCheckOptions = {}): RequestHandler {
+export function degradeOnLevel(
+  minLevel: SheddingLevel,
+  options: FlagCheckOptions = {},
+): RequestHandler {
   return (req: Request, res: Response, next: NextFunction) => {
     const currentLevel = getCurrentLevel();
     const levels: SheddingLevel[] = ['none', 'light', 'medium', 'critical'];
     if (levels.indexOf(currentLevel) >= levels.indexOf(minLevel)) {
       const { statusCode = 503, degradeResponse } = options;
-      return res.status(statusCode).json(
-        degradeResponse || { ...DEFAULT_DEGRADE_RESPONSE, sheddingLevel: currentLevel }
-      );
+      return res
+        .status(statusCode)
+        .json(degradeResponse || { ...DEFAULT_DEGRADE_RESPONSE, sheddingLevel: currentLevel });
     }
     next();
   };
 }
 
-export function featureFlagMiddleware(flagKey: string, options: FlagCheckOptions = {}): RequestHandler {
+export function featureFlagMiddleware(
+  flagKey: string,
+  options: FlagCheckOptions = {},
+): RequestHandler {
   return requireFlag(flagKey, options);
 }
 

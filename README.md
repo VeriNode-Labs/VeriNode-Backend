@@ -9,7 +9,7 @@ Node.js Express API server for the VeriNode Decentralized Savings Circle (ROSCA)
 
 ## 🛠️ Tech Stack
 * **Language/Framework:** Node.js / Express
-* **Key Dependencies:** `express`, `cors`, `dotenv`
+* **Key Dependencies:** `express`, `pg`, `redis`, OpenTelemetry packages
 
 ## 📦 Getting Started
 

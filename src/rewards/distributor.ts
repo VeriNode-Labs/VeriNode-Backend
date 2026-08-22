@@ -40,7 +40,10 @@ export class RewardDistributor {
     private readonly requeue?: RewardCycleRequeue,
   ) {}
 
-  computeAllocations(pendingRewards: RewardAllocation[], totalRewardPool: string): RewardAllocation[] {
+  computeAllocations(
+    pendingRewards: RewardAllocation[],
+    totalRewardPool: string,
+  ): RewardAllocation[] {
     const pool = parseUnits(totalRewardPool);
     if (pool < REWARD_POOL_MIN_UNITS || pool > REWARD_POOL_MAX_UNITS) {
       throw new RangeError('totalRewardPool is outside supported reward-cycle bounds');
@@ -52,10 +55,12 @@ export class RewardDistributor {
     const totalPending = positiveRewards.reduce((sum, reward) => sum + reward.amount, 0n);
     if (totalPending === 0n) return [];
 
-    return positiveRewards.map((reward) => ({
-      nodeId: reward.nodeId,
-      amount: formatUnits((pool * reward.amount) / totalPending),
-    })).filter((reward) => parseUnits(reward.amount) > 0n);
+    return positiveRewards
+      .map((reward) => ({
+        nodeId: reward.nodeId,
+        amount: formatUnits((pool * reward.amount) / totalPending),
+      }))
+      .filter((reward) => parseUnits(reward.amount) > 0n);
   }
 
   async computeAndDistributeNodeReward(nodeId: string): Promise<RewardDistributionResult> {
@@ -82,10 +87,10 @@ export class RewardDistributor {
           return { nodeId, allocatedAmount: '0.0000000', status: 'skipped' };
         }
 
-        await client.query(
-          'INSERT INTO reward_tx (node_id, amount) VALUES ($1, $2)',
-          [nodeId, allocation.amount],
-        );
+        await client.query('INSERT INTO reward_tx (node_id, amount) VALUES ($1, $2)', [
+          nodeId,
+          allocation.amount,
+        ]);
         await client.query(
           'UPDATE reward_pending_amounts SET amount = amount - $2::numeric WHERE node_id = $1',
           [nodeId, allocation.amount],
@@ -117,21 +122,36 @@ export class RewardDistributor {
       const count = this.metrics.acquisitionSeconds.filter((value) => value <= bucket).length;
       lines.push(`reward_lock_acquisition_seconds_bucket{le="${bucket}"} ${count}`);
     }
-    lines.push(`reward_lock_acquisition_seconds_bucket{le="+Inf"} ${this.metrics.acquisitionSeconds.length}`);
-    lines.push(`reward_lock_acquisition_seconds_sum ${this.metrics.acquisitionSeconds.reduce((sum, value) => sum + value, 0)}`);
+    lines.push(
+      `reward_lock_acquisition_seconds_bucket{le="+Inf"} ${this.metrics.acquisitionSeconds.length}`,
+    );
+    lines.push(
+      `reward_lock_acquisition_seconds_sum ${this.metrics.acquisitionSeconds.reduce((sum, value) => sum + value, 0)}`,
+    );
     lines.push(`reward_lock_acquisition_seconds_count ${this.metrics.acquisitionSeconds.length}`);
-    lines.push('# HELP reward_lock_contention_total Reward distribution lock acquisition timeouts.');
+    lines.push(
+      '# HELP reward_lock_contention_total Reward distribution lock acquisition timeouts.',
+    );
     lines.push('# TYPE reward_lock_contention_total counter');
     lines.push(`reward_lock_contention_total ${this.metrics.contentionTotal}`);
-    lines.push('# HELP reward_double_spend_prevented_total Reward distributions serialized by per-node advisory locks.');
+    lines.push(
+      '# HELP reward_double_spend_prevented_total Reward distributions serialized by per-node advisory locks.',
+    );
     lines.push('# TYPE reward_double_spend_prevented_total counter');
     lines.push(`reward_double_spend_prevented_total ${this.metrics.doubleSpendPreventedTotal}`);
     return `${lines.join('\n')}\n`;
   }
 }
 
-export function computeAllocations(pendingRewards: RewardAllocation[], totalRewardPool: string): RewardAllocation[] {
-  const distributor = new RewardDistributor({ transaction: async () => { throw new Error('database is required'); } });
+export function computeAllocations(
+  pendingRewards: RewardAllocation[],
+  totalRewardPool: string,
+): RewardAllocation[] {
+  const distributor = new RewardDistributor({
+    transaction: async () => {
+      throw new Error('database is required');
+    },
+  });
   return distributor.computeAllocations(pendingRewards, totalRewardPool);
 }
 

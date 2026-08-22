@@ -68,7 +68,11 @@ export class CapacityPlanner {
     for (const sample of samples) this.record(sample);
   }
 
-  forecast(service: string, resource: CapacityResource, forecastDays = this.options.forecastDays): CapacityForecast | null {
+  forecast(
+    service: string,
+    resource: CapacityResource,
+    forecastDays = this.options.forecastDays,
+  ): CapacityForecast | null {
     const history = this.samples.get(this.key(service, resource)) ?? [];
     if (history.length === 0) return null;
 
@@ -78,8 +82,12 @@ export class CapacityPlanner {
     const projectedValue = Math.max(0, latest.value + growthPerDay * forecastDays);
     const currentUtilizationPercent = this.utilization(latest.value, latest.capacity);
     const projectedUtilizationPercent = this.utilization(projectedValue, latest.capacity);
-    const daysToExhaustion = growthPerDay > 0 ? Math.max(0, (latest.capacity - latest.value) / growthPerDay) : null;
-    const level = this.levelFor(Math.max(currentUtilizationPercent, projectedUtilizationPercent), daysToExhaustion);
+    const daysToExhaustion =
+      growthPerDay > 0 ? Math.max(0, (latest.capacity - latest.value) / growthPerDay) : null;
+    const level = this.levelFor(
+      Math.max(currentUtilizationPercent, projectedUtilizationPercent),
+      daysToExhaustion,
+    );
 
     return {
       service,
@@ -116,17 +124,25 @@ export class CapacityPlanner {
     ];
     for (const forecast of this.forecastAll(forecastDays)) {
       const labels = `service="${this.escape(forecast.service)}",resource="${forecast.resource}",level="${forecast.level}"`;
-      lines.push(`capacity_current_utilization_percent{${labels}} ${forecast.currentUtilizationPercent.toFixed(2)}`);
-      lines.push(`capacity_projected_utilization_percent{${labels}} ${forecast.projectedUtilizationPercent.toFixed(2)}`);
-      lines.push(`capacity_days_to_exhaustion{${labels}} ${forecast.daysToExhaustion === null ? -1 : forecast.daysToExhaustion.toFixed(2)}`);
+      lines.push(
+        `capacity_current_utilization_percent{${labels}} ${forecast.currentUtilizationPercent.toFixed(2)}`,
+      );
+      lines.push(
+        `capacity_projected_utilization_percent{${labels}} ${forecast.projectedUtilizationPercent.toFixed(2)}`,
+      );
+      lines.push(
+        `capacity_days_to_exhaustion{${labels}} ${forecast.daysToExhaustion === null ? -1 : forecast.daysToExhaustion.toFixed(2)}`,
+      );
     }
     return `${lines.join('\n')}\n`;
   }
 
   private validateSample(sample: UsageSample): void {
     if (!sample.service.trim()) throw new Error('service is required');
-    if (!Number.isFinite(sample.value) || sample.value < 0) throw new Error('value must be a non-negative number');
-    if (!Number.isFinite(sample.capacity) || sample.capacity <= 0) throw new Error('capacity must be greater than zero');
+    if (!Number.isFinite(sample.value) || sample.value < 0)
+      throw new Error('value must be a non-negative number');
+    if (!Number.isFinite(sample.capacity) || sample.capacity <= 0)
+      throw new Error('capacity must be greater than zero');
     if (!Number.isFinite(sample.timestamp)) throw new Error('timestamp must be finite');
   }
 
@@ -142,7 +158,10 @@ export class CapacityPlanner {
     const covariance = xs.reduce((sum, x, index) => sum + (x - xMean) * (ys[index] - yMean), 0);
     const slopePerDay = covariance / variance;
     const total = ys.reduce((sum, y) => sum + (y - yMean) ** 2, 0);
-    const residual = ys.reduce((sum, y, index) => sum + (y - (yMean + slopePerDay * (xs[index] - xMean))) ** 2, 0);
+    const residual = ys.reduce(
+      (sum, y, index) => sum + (y - (yMean + slopePerDay * (xs[index] - xMean))) ** 2,
+      0,
+    );
     const confidence = total === 0 ? 1 : Math.max(0, Math.min(1, 1 - residual / total));
     return { slopePerDay, confidence };
   }
@@ -151,17 +170,35 @@ export class CapacityPlanner {
     return (value / capacity) * 100;
   }
 
-  private levelFor(utilizationPercent: number, daysToExhaustion: number | null): CapacityForecast['level'] {
-    if (utilizationPercent >= this.options.criticalUtilizationPercent || (daysToExhaustion !== null && daysToExhaustion <= 7)) return 'critical';
-    if (utilizationPercent >= this.options.scaleUtilizationPercent || (daysToExhaustion !== null && daysToExhaustion <= 30)) return 'scale';
+  private levelFor(
+    utilizationPercent: number,
+    daysToExhaustion: number | null,
+  ): CapacityForecast['level'] {
+    if (
+      utilizationPercent >= this.options.criticalUtilizationPercent ||
+      (daysToExhaustion !== null && daysToExhaustion <= 7)
+    )
+      return 'critical';
+    if (
+      utilizationPercent >= this.options.scaleUtilizationPercent ||
+      (daysToExhaustion !== null && daysToExhaustion <= 30)
+    )
+      return 'scale';
     if (utilizationPercent >= this.options.watchUtilizationPercent) return 'watch';
     return 'healthy';
   }
 
-  private recommend(level: CapacityForecast['level'], resource: CapacityResource, daysToExhaustion: number | null): string {
-    if (level === 'critical') return `Urgently add ${resource} capacity or shed load; projected exhaustion in ${daysToExhaustion?.toFixed(1) ?? 'unknown'} days.`;
-    if (level === 'scale') return `Schedule blue-green capacity expansion for ${resource} and validate with canary analysis.`;
-    if (level === 'watch') return `Monitor ${resource} growth and prepare scaling runbook if trend continues.`;
+  private recommend(
+    level: CapacityForecast['level'],
+    resource: CapacityResource,
+    daysToExhaustion: number | null,
+  ): string {
+    if (level === 'critical')
+      return `Urgently add ${resource} capacity or shed load; projected exhaustion in ${daysToExhaustion?.toFixed(1) ?? 'unknown'} days.`;
+    if (level === 'scale')
+      return `Schedule blue-green capacity expansion for ${resource} and validate with canary analysis.`;
+    if (level === 'watch')
+      return `Monitor ${resource} growth and prepare scaling runbook if trend continues.`;
     return `${resource} capacity is within target bounds.`;
   }
 

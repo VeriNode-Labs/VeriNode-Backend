@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { KafkaConsumerMonitor } from '../../src/queue/kafka_consumer_monitor';
-import type { ConsumerGroupMetrics, KafkaClusterInfo } from '../../src/queue/kafka_consumer_monitor';
+import type {
+  ConsumerGroupMetrics,
+  KafkaClusterInfo,
+} from '../../src/queue/kafka_consumer_monitor';
 
 function createMockAdminClient() {
   const groups = new Map<string, ConsumerGroupMetrics[]>();

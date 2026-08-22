@@ -110,10 +110,7 @@ export class KafkaAutoScaler {
     let direction: 'up' | 'down' | null = null;
     let reason = '';
 
-    if (
-      totalLag >= this.config.scaleUpThreshold &&
-      currentConsumers < this.config.maxConsumers
-    ) {
+    if (totalLag >= this.config.scaleUpThreshold && currentConsumers < this.config.maxConsumers) {
       direction = 'up';
       reason = `totalLag ${totalLag} >= scaleUpThreshold ${this.config.scaleUpThreshold}`;
     } else if (
@@ -133,9 +130,10 @@ export class KafkaAutoScaler {
     if (direction) {
       const from = currentConsumers;
       const step = direction === 'up' ? this.config.scaleUpBy : this.config.scaleDownBy;
-      const to = direction === 'up'
-        ? Math.min(from + step, this.config.maxConsumers)
-        : Math.max(from - step, this.config.minConsumers);
+      const to =
+        direction === 'up'
+          ? Math.min(from + step, this.config.maxConsumers)
+          : Math.max(from - step, this.config.minConsumers);
       if (to !== from) {
         try {
           await this.scaler.scaleConsumerGroup(groupId, to);

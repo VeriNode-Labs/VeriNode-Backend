@@ -126,8 +126,18 @@ export class ConfigManager {
         cooldownPeriodMs: 30000,
         thresholds: {
           light: { cpuPercent: 70, memoryPercent: 75, requestRatePerSec: 800, p99LatencyMs: 500 },
-          medium: { cpuPercent: 85, memoryPercent: 85, requestRatePerSec: 1200, p99LatencyMs: 1000 },
-          critical: { cpuPercent: 95, memoryPercent: 95, requestRatePerSec: 2000, p99LatencyMs: 3000 },
+          medium: {
+            cpuPercent: 85,
+            memoryPercent: 85,
+            requestRatePerSec: 1200,
+            p99LatencyMs: 1000,
+          },
+          critical: {
+            cpuPercent: 95,
+            memoryPercent: 95,
+            requestRatePerSec: 2000,
+            p99LatencyMs: 3000,
+          },
         },
         flagsToShed: {},
       },
@@ -203,8 +213,8 @@ export class ConfigManager {
     // Start polling for changes - 250ms for near-instant hot-reload
     const interval = setInterval(() => this.checkFileChanges(), 250);
     interval.unref?.();
-    
-    const watched = this.watchedFiles.find(f => f.path === absolutePath);
+
+    const watched = this.watchedFiles.find((f) => f.path === absolutePath);
     if (watched) {
       watched.interval = interval;
     }
@@ -266,12 +276,12 @@ export class ConfigManager {
    */
   async reload(): Promise<void> {
     const oldConfig = deepClone(this.config);
-    
+
     this.loader.clearCache();
     const newConfig = await this.loader.load();
-    
+
     this.config = newConfig;
-    
+
     configEventBus.emitEvent('updated', this.config);
     configEventBus.emitEvent('loaded', this.config);
 
@@ -280,7 +290,10 @@ export class ConfigManager {
       try {
         callback(oldConfig, this.config);
       } catch (err) {
-        log.error('Error in configuration change callback', { 'callback.id': id, 'error.message': (err as Error).message });
+        log.error('Error in configuration change callback', {
+          'callback.id': id,
+          'error.message': (err as Error).message,
+        });
       }
     }
 
@@ -314,19 +327,24 @@ export class ConfigManager {
 
     const validationResult = this.validator.validate(newConfig);
     if (!validationResult.valid) {
-      const errorMessages = validationResult.errors.map(e => `${e.path}: ${e.message}`).join('; ');
+      const errorMessages = validationResult.errors
+        .map((e) => `${e.path}: ${e.message}`)
+        .join('; ');
       throw new Error(`Configuration validation failed: ${errorMessages}`);
     }
 
     this.config = validationResult.data;
     configEventBus.emitEvent('updated', this.config);
-    
+
     // Notify change listeners
     for (const [id, callback] of this.changeCallbacks) {
       try {
         callback(oldConfig, this.config);
       } catch (err) {
-        log.error('Error in configuration change callback', { 'callback.id': id, 'error.message': (err as Error).message });
+        log.error('Error in configuration change callback', {
+          'callback.id': id,
+          'error.message': (err as Error).message,
+        });
       }
     }
   }
@@ -344,7 +362,9 @@ export class ConfigManager {
 
     const validationResult = this.validator.validate(newConfig);
     if (!validationResult.valid) {
-      const errorMessages = validationResult.errors.map(e => `${e.path}: ${e.message}`).join('; ');
+      const errorMessages = validationResult.errors
+        .map((e) => `${e.path}: ${e.message}`)
+        .join('; ');
       throw new Error(`Configuration validation failed: ${errorMessages}`);
     }
 
@@ -356,7 +376,10 @@ export class ConfigManager {
       try {
         callback(oldConfig, this.config);
       } catch (err) {
-        log.error('Error in configuration change callback', { 'callback.id': id, 'error.message': (err as Error).message });
+        log.error('Error in configuration change callback', {
+          'callback.id': id,
+          'error.message': (err as Error).message,
+        });
       }
     }
     return true;
@@ -385,7 +408,7 @@ export class ConfigManager {
     const fullId = this.onChange((oldConfig, newConfig) => {
       const oldValue = getIn(oldConfig, path);
       const newValue = getIn(newConfig, path);
-      
+
       if (oldValue !== newValue) {
         callback(newValue);
       }

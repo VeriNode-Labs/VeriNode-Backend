@@ -17,6 +17,14 @@ const DEFAULT_EMERGENCY_NOTIFY_DAYS = 7;
 const DEFAULT_CHECK_INTERVAL_MS = DAY_MS;
 const DEFAULT_WATCH_DEBOUNCE_MS = 250;
 
+// ── Certificate Alert Threshold ───────────────────────────────────────────────
+/** Alert severity threshold: alert when < 14 days remaining. */
+const CERT_ALERT_DAYS = 14;
+
+// ── Central Cert Store Path ───────────────────────────────────────────────────
+/** Default root directory for per-service certificates. */
+const DEFAULT_CERTS_ROOT = '/etc/verinode/certs';
+
 export interface CertificatePaths {
   certPath: string;
   keyPath: string;
@@ -58,6 +66,64 @@ export interface AcmeIssueRequest {
 
 export interface AcmeIssuer {
   issueCertificate(request: AcmeIssueRequest): Promise<StoredCertificate>;
+}
+
+// ── DNS-01 Challenge Support ───────────────────────────────────────────────────
+
+export interface Dns01ChallengeStore {
+  /** Set a _acme-challenge TXT DNS record for the given domain. */
+  setTxtRecord(domain: string, value: string): Promise<void>;
+  /** Remove the _acme-challenge TXT DNS record for the given domain. */
+  removeTxtRecord(domain: string): Promise<void>;
+}
+
+export interface AcmeDns01IssuerOptions {
+  directoryUrl: string;
+  accountKeyPath: string;
+  dns01Store: Dns01ChallengeStore;
+  termsOfServiceAgreed: boolean;
+}
+
+// ── Multi-Service Certificate Manager Types ───────────────────────────────────
+
+/** Per-service certificate status reported by the management API. */
+export interface ServiceCertStatus {
+  service: string;
+  certPath: string;
+  keyPath: string;
+  chainPath: string;
+  exists: boolean;
+  expiresAt: string | null;
+  daysRemaining: number | null;
+  shouldRenew: boolean;
+  emergency: boolean;
+  alerting: boolean;
+}
+
+
+/** Options for a single managed service. */
+export interface ManagedServiceOptions {
+  /** Logical service name — used as the sub-directory name under certsRoot. */
+  service: string;
+  domains: string[];
+  email: string;
+  /** Override the default certsRoot for this service. */
+  certsRoot?: string;
+  /** Override renewBeforeDays for this service. */
+  renewBeforeDays?: number;
+  /** Override emergencyNotifyDays for this service. */
+  emergencyNotifyDays?: number;
+}
+
+export interface CertLifecycleManagerOptions {
+  /** Root path; per-service dirs are {certsRoot}/{service}/. Default: /etc/verinode/certs */
+  certsRoot?: string;
+  services: ManagedServiceOptions[];
+  issuer: AcmeIssuer;
+  checkIntervalMs?: number;
+  now?: () => Date;
+  onAlert?: (alert: RenewalAlert & { service: string }) => void | Promise<void>;
+  onMetric?: (name: string, value: number, labels?: Record<string, string>) => void;
 }
 
 export interface CertificateStoreOptions extends CertificatePaths {
@@ -135,7 +201,11 @@ export class CertificateStore {
     return fsp.readFile(this.keyPath, 'utf8');
   }
 
-  async readStatus(now: Date, renewBeforeDays: number, emergencyNotifyDays: number): Promise<CertificateStatus> {
+  async readStatus(
+    now: Date,
+    renewBeforeDays: number,
+    emergencyNotifyDays: number,
+  ): Promise<CertificateStatus> {
     if (!(await this.exists())) {
       return {
         exists: false,
@@ -159,7 +229,9 @@ export class CertificateStore {
   }
 
   async writeAtomic(next: StoredCertificate): Promise<void> {
-    const certBody = next.chain ? `${next.certificate.trim()}\n${next.chain.trim()}\n` : ensureTrailingNewline(next.certificate);
+    const certBody = next.chain
+      ? `${next.certificate.trim()}\n${next.chain.trim()}\n`
+      : ensureTrailingNewline(next.certificate);
     await Promise.all([
       atomicWriteFile(this.certPath, certBody, 0o644),
       atomicWriteFile(this.keyPath, ensureTrailingNewline(next.privateKey), this.fileMode),
@@ -172,7 +244,10 @@ export class CertificateStore {
   loadSecureContext(): tls.SecureContext {
     const cert = fs.readFileSync(this.certPath, 'utf8');
     const key = fs.readFileSync(this.keyPath, 'utf8');
-    const ca = this.chainPath && fs.existsSync(this.chainPath) ? fs.readFileSync(this.chainPath, 'utf8') : undefined;
+    const ca =
+      this.chainPath && fs.existsSync(this.chainPath)
+        ? fs.readFileSync(this.chainPath, 'utf8')
+        : undefined;
     return tls.createSecureContext({ cert, key, ca });
   }
 }
@@ -253,6 +328,343 @@ export class AcmeClientIssuer implements AcmeIssuer {
   }
 }
 
+// ── DNS-01 Issuer ─────────────────────────────────────────────────────────────
+
+/**
+ * ACME issuer that uses the DNS-01 challenge method.
+ *
+ * The caller provides a `Dns01ChallengeStore` that sets and removes
+ * `_acme-challenge.<domain>` TXT records. This is required for
+ * wildcard certificates and environments where HTTP-01 is not feasible.
+ */
+export class AcmeDns01Issuer implements AcmeIssuer {
+  constructor(private readonly options: AcmeDns01IssuerOptions) {}
+
+  async issueCertificate(request: AcmeIssueRequest): Promise<StoredCertificate> {
+    if (request.domains.length === 0) throw new Error('at least one ACME domain is required');
+    const acme = require('acme-client');
+    await fsp.mkdir(path.dirname(this.options.accountKeyPath), { recursive: true });
+
+    let accountKey: Buffer;
+    if (await fileExists(this.options.accountKeyPath)) {
+      accountKey = await fsp.readFile(this.options.accountKeyPath);
+    } else {
+      accountKey = await acme.forge.createPrivateKey();
+      await atomicWriteFile(this.options.accountKeyPath, accountKey.toString(), 0o600);
+    }
+
+    const client = new acme.Client({
+      directoryUrl: this.options.directoryUrl,
+      accountKey,
+    });
+    const [privateKey, csr] = await acme.forge.createCsr({
+      commonName: request.domains[0],
+      altNames: request.domains,
+    });
+
+    const certificate = await client.auto({
+      csr,
+      email: request.email,
+      termsOfServiceAgreed: this.options.termsOfServiceAgreed,
+      challengePriority: ['dns-01'],
+      challengeCreateFn: async (_authz: unknown, _challenge: unknown, keyAuthorization: string) => {
+        const authz = _authz as { identifier?: { value?: string } };
+        const domain = authz?.identifier?.value ?? request.domains[0];
+        await this.options.dns01Store.setTxtRecord(domain, keyAuthorization);
+      },
+      challengeRemoveFn: async (_authz: unknown, _challenge: unknown) => {
+        const authz = _authz as { identifier?: { value?: string } };
+        const domain = authz?.identifier?.value ?? request.domains[0];
+        await this.options.dns01Store.removeTxtRecord(domain);
+      },
+    });
+
+    return {
+      certificate: certificate.toString(),
+      privateKey: privateKey.toString(),
+    };
+  }
+}
+
+// ── Certificate Metrics ───────────────────────────────────────────────────────
+
+/**
+ * Lightweight Prometheus-compatible metrics tracker for ACME certificate lifecycle.
+ *
+ * Tracks `cert_expiry_days` gauge per service and renewal counters.
+ * Emits alerts when days remaining < CERT_ALERT_DAYS (14).
+ */
+export class CertLifecycleMetrics {
+  /** cert_expiry_days gauge: keyed by service name. */
+  private readonly expiryDaysGauge = new Map<string, number>();
+  private readonly renewalAttempts = new Map<string, number>();
+  private readonly renewalSuccesses = new Map<string, number>();
+  private readonly renewalFailures = new Map<string, number>();
+
+  setExpiryDays(service: string, days: number): void {
+    this.expiryDaysGauge.set(service, days);
+  }
+
+  recordRenewalAttempt(service: string): void {
+    this.renewalAttempts.set(service, (this.renewalAttempts.get(service) ?? 0) + 1);
+  }
+
+  recordRenewalSuccess(service: string): void {
+    this.renewalSuccesses.set(service, (this.renewalSuccesses.get(service) ?? 0) + 1);
+  }
+
+  recordRenewalFailure(service: string): void {
+    this.renewalFailures.set(service, (this.renewalFailures.get(service) ?? 0) + 1);
+  }
+
+  getExpiryDays(service: string): number | undefined {
+    return this.expiryDaysGauge.get(service);
+  }
+
+  isAlertingForService(service: string): boolean {
+    const days = this.expiryDaysGauge.get(service);
+    return days !== undefined && days < CERT_ALERT_DAYS;
+  }
+
+  renderPrometheus(): string {
+    const lines: string[] = [
+      '# HELP verinode_cert_expiry_days Days until TLS certificate expires, per service.',
+      '# TYPE verinode_cert_expiry_days gauge',
+    ];
+    for (const [service, days] of this.expiryDaysGauge) {
+      lines.push(`verinode_cert_expiry_days{service="${service}"} ${days}`);
+    }
+    lines.push(
+      '# HELP verinode_cert_renewal_attempts_total Total certificate renewal attempts per service.',
+      '# TYPE verinode_cert_renewal_attempts_total counter',
+    );
+    for (const [service, count] of this.renewalAttempts) {
+      lines.push(`verinode_cert_renewal_attempts_total{service="${service}"} ${count}`);
+    }
+    lines.push(
+      '# HELP verinode_cert_renewal_successes_total Successful certificate renewals per service.',
+      '# TYPE verinode_cert_renewal_successes_total counter',
+    );
+    for (const [service, count] of this.renewalSuccesses) {
+      lines.push(`verinode_cert_renewal_successes_total{service="${service}"} ${count}`);
+    }
+    lines.push(
+      '# HELP verinode_cert_renewal_failures_total Failed certificate renewal attempts per service.',
+      '# TYPE verinode_cert_renewal_failures_total counter',
+    );
+    for (const [service, count] of this.renewalFailures) {
+      lines.push(`verinode_cert_renewal_failures_total{service="${service}"} ${count}`);
+    }
+    lines.push('');
+    return lines.join('\n');
+  }
+}
+
+// ── Multi-Service Certificate Lifecycle Manager ───────────────────────────────
+
+/**
+ * Manages the full ACME certificate lifecycle for multiple services.
+ *
+ * Each service stores its certificate at:
+ *   {certsRoot}/{service}/cert.pem    — leaf certificate (PEM)
+ *   {certsRoot}/{service}/key.pem     — private key (PEM)
+ *   {certsRoot}/{service}/chain.pem   — CA chain (PEM)
+ *
+ * Behaviour:
+ * - Daily cron check (configurable) across all registered services.
+ * - Renews when < renewBeforeDays (default 30) days remain.
+ * - Falls back to existing cert if renewal fails, until < 7 days left (emergency).
+ * - Emits `cert_expiry_days` gauge metric per service; alerts when < 14 days.
+ * - Provides the management API handler functions for express integration.
+ */
+export class CertLifecycleManager extends EventEmitter {
+  private readonly certsRoot: string;
+  private readonly checkIntervalMs: number;
+  private readonly now: () => Date;
+  private readonly metrics = new CertLifecycleMetrics();
+  private readonly log = createLogger('cert-lifecycle');
+  private timer: NodeJS.Timeout | null = null;
+  private running = false;
+
+  /** Per-service AcmeRenewalManager instances, keyed by service name. */
+  private readonly managers = new Map<string, AcmeRenewalManager>();
+  /** Per-service CertificateStore instances, keyed by service name. */
+  private readonly stores = new Map<string, CertificateStore>();
+
+  constructor(private readonly options: CertLifecycleManagerOptions) {
+    super();
+    this.certsRoot = options.certsRoot ?? DEFAULT_CERTS_ROOT;
+    this.checkIntervalMs = options.checkIntervalMs ?? DEFAULT_CHECK_INTERVAL_MS;
+    this.now = options.now ?? (() => new Date());
+
+    for (const svc of options.services) {
+      const root = svc.certsRoot ?? this.certsRoot;
+      const serviceDir = path.join(root, svc.service);
+      const store = new CertificateStore({
+        certPath: path.join(serviceDir, 'cert.pem'),
+        keyPath: path.join(serviceDir, 'key.pem'),
+        chainPath: path.join(serviceDir, 'chain.pem'),
+      });
+      this.stores.set(svc.service, store);
+
+      const renewBeforeDays = svc.renewBeforeDays ?? DEFAULT_RENEW_BEFORE_DAYS;
+      const emergencyNotifyDays = svc.emergencyNotifyDays ?? DEFAULT_EMERGENCY_NOTIFY_DAYS;
+
+      const manager = new AcmeRenewalManager({
+        domains: svc.domains,
+        email: svc.email,
+        issuer: options.issuer,
+        store,
+        renewBeforeDays,
+        emergencyNotifyDays,
+        now: this.now,
+        onAlert: async (alert) => {
+          const enriched = { ...alert, service: svc.service };
+          await options.onAlert?.(enriched);
+          this.emit('alert', enriched);
+        },
+        onMetric: (name, value, labels) => {
+          const enrichedLabels = { ...labels, service: svc.service };
+          options.onMetric?.(name, value, enrichedLabels);
+          if (name === 'tls_certificate_days_remaining') {
+            this.metrics.setExpiryDays(svc.service, value);
+            if (value < CERT_ALERT_DAYS) {
+              const severity = value < emergencyNotifyDays ? 'critical' : 'warning';
+              const alertMsg = `Certificate for service ${svc.service} expires in ${value} days (alert threshold: ${CERT_ALERT_DAYS} days)`;
+              this.log.warn(alertMsg, { service: svc.service, days_remaining: value });
+              void options.onAlert?.({ severity, message: alertMsg, service: svc.service });
+            }
+          }
+        },
+      });
+      this.managers.set(svc.service, manager);
+    }
+  }
+
+  /** Start the daily renewal check across all services. */
+  start(): void {
+    if (this.timer) return;
+    this.running = true;
+    void this.checkAllOnce();
+    this.timer = setInterval(() => void this.checkAllOnce(), this.checkIntervalMs);
+    this.timer.unref?.();
+  }
+
+  /** Stop all renewal checks. */
+  stop(): void {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    this.running = false;
+    for (const manager of this.managers.values()) {
+      manager.stop();
+    }
+  }
+
+  isRunning(): boolean {
+    return this.running;
+  }
+
+  async checkAllOnce(): Promise<{ results: Array<{ service: string } & RenewalResult> }> {
+    const results: Array<{ service: string } & RenewalResult> = [];
+    for (const [service, manager] of this.managers) {
+      try {
+        this.metrics.recordRenewalAttempt(service);
+        const result = await manager.checkOnce();
+        if (result.attempted && result.renewed) {
+          this.metrics.recordRenewalSuccess(service);
+        } else if (result.attempted && !result.renewed) {
+          this.metrics.recordRenewalFailure(service);
+        }
+        results.push({ service, ...result });
+      } catch (err) {
+        this.metrics.recordRenewalFailure(service);
+        results.push({
+          service,
+          attempted: true,
+          renewed: false,
+          expiresAt: null,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return { results };
+  }
+
+  /** Run renewal check for a single service. */
+  async checkServiceOnce(service: string): Promise<{ service: string } & RenewalResult> {
+    const manager = this.managers.get(service);
+    if (!manager) throw new Error(`Unknown service: ${service}`);
+    this.metrics.recordRenewalAttempt(service);
+    try {
+      const result = await manager.checkOnce();
+      if (result.attempted && result.renewed) this.metrics.recordRenewalSuccess(service);
+      else if (result.attempted && !result.renewed) this.metrics.recordRenewalFailure(service);
+      return { service, ...result };
+    } catch (err) {
+      this.metrics.recordRenewalFailure(service);
+      return {
+        service,
+        attempted: true,
+        renewed: false,
+        expiresAt: null,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
+  /** Get current certificate status for all services. */
+  async getAllStatus(): Promise<ServiceCertStatus[]> {
+    const statuses: ServiceCertStatus[] = [];
+    for (const [service, store] of this.stores) {
+      const manager = this.managers.get(service)!;
+      const status = await manager.status();
+      statuses.push({
+        service,
+        certPath: store.certPath,
+        keyPath: store.keyPath,
+        chainPath: store.chainPath ?? path.join(path.dirname(store.certPath), 'chain.pem'),
+        exists: status.exists,
+        expiresAt: status.expiresAt?.toISOString() ?? null,
+        daysRemaining: status.daysRemaining,
+        shouldRenew: status.shouldRenew,
+        emergency: status.emergency,
+        alerting: status.daysRemaining !== null && status.daysRemaining < CERT_ALERT_DAYS,
+      });
+    }
+    return statuses;
+  }
+
+  /** Get current certificate status for a single service. */
+  async getServiceStatus(service: string): Promise<ServiceCertStatus> {
+    const store = this.stores.get(service);
+    const manager = this.managers.get(service);
+    if (!store || !manager) throw new Error(`Unknown service: ${service}`);
+    const status = await manager.status();
+    return {
+      service,
+      certPath: store.certPath,
+      keyPath: store.keyPath,
+      chainPath: store.chainPath ?? path.join(path.dirname(store.certPath), 'chain.pem'),
+      exists: status.exists,
+      expiresAt: status.expiresAt?.toISOString() ?? null,
+      daysRemaining: status.daysRemaining,
+      shouldRenew: status.shouldRenew,
+      emergency: status.emergency,
+      alerting: status.daysRemaining !== null && status.daysRemaining < CERT_ALERT_DAYS,
+    };
+  }
+
+  prometheusMetrics(): string {
+    return this.metrics.renderPrometheus();
+  }
+
+  getMetrics(): CertLifecycleMetrics {
+    return this.metrics;
+  }
+}
+
+
+
 export class TlsCertificateReloader extends EventEmitter {
   private currentContext: tls.SecureContext | null = null;
   private watchers: fs.FSWatcher[] = [];
@@ -274,13 +686,19 @@ export class TlsCertificateReloader extends EventEmitter {
     return this.currentContext;
   }
 
-  SNICallback(_servername: string, callback: (err: Error | null, ctx?: tls.SecureContext) => void): void {
+  SNICallback(
+    _servername: string,
+    callback: (err: Error | null, ctx?: tls.SecureContext) => void,
+  ): void {
     callback(null, this.getContext());
   }
 
   start(): void {
     if (this.watchers.length > 0) return;
-    const dirs = new Set([path.dirname(this.options.store.certPath), path.dirname(this.options.store.keyPath)]);
+    const dirs = new Set([
+      path.dirname(this.options.store.certPath),
+      path.dirname(this.options.store.keyPath),
+    ]);
     if (this.options.store.chainPath) dirs.add(path.dirname(this.options.store.chainPath));
     for (const dir of dirs) {
       fs.mkdirSync(dir, { recursive: true });
@@ -332,7 +750,11 @@ export class AcmeRenewalManager extends EventEmitter {
   }
 
   async status(): Promise<CertificateStatus> {
-    return this.options.store.readStatus(this.now(), this.renewBeforeDays, this.emergencyNotifyDays);
+    return this.options.store.readStatus(
+      this.now(),
+      this.renewBeforeDays,
+      this.emergencyNotifyDays,
+    );
   }
 
   start(): void {
@@ -364,7 +786,11 @@ export class AcmeRenewalManager extends EventEmitter {
       await this.options.store.writeAtomic(issued);
       const after = await this.status();
       this.emitMetrics(after);
-      await this.alert({ severity: 'info', message: 'TLS certificate renewed successfully', status: after });
+      await this.alert({
+        severity: 'info',
+        message: 'TLS certificate renewed successfully',
+        status: after,
+      });
       this.emit('renewed', after);
       return { attempted: true, renewed: true, expiresAt: after.expiresAt };
     } catch (err) {
@@ -405,7 +831,9 @@ export class AcmeRenewalManager extends EventEmitter {
   }
 }
 
-export async function createAcmeChallengeHandler(store: ChallengeStore): Promise<express.RequestHandler> {
+export async function createAcmeChallengeHandler(
+  store: ChallengeStore,
+): Promise<express.RequestHandler> {
   return async (req, res) => {
     const token = Array.isArray(req.params.token) ? req.params.token[0] : req.params.token;
     if (!token) return res.status(400).send('invalid challenge');
@@ -419,7 +847,10 @@ export async function createAcmeChallengeHandler(store: ChallengeStore): Promise
   };
 }
 
-export async function bootstrapTlsFromEnv(app: express.Express, options: EnvTlsBootstrapOptions): Promise<https.Server | null> {
+export async function bootstrapTlsFromEnv(
+  app: express.Express,
+  options: EnvTlsBootstrapOptions,
+): Promise<https.Server | null> {
   if (process.env.TLS_ACME_ENABLED !== 'true') return null;
   const log = options.log ?? createLogger('acme_rotation', { 'tls.mode': 'acme' });
   const domains = readCsvEnv('TLS_DOMAINS');
@@ -427,7 +858,9 @@ export async function bootstrapTlsFromEnv(app: express.Express, options: EnvTlsB
   const certPath = process.env.TLS_CERT_PATH;
   const keyPath = process.env.TLS_KEY_PATH;
   if (domains.length === 0 || !email || !certPath || !keyPath) {
-    throw new Error('TLS_ACME_ENABLED requires TLS_DOMAINS, TLS_ACME_EMAIL, TLS_CERT_PATH, and TLS_KEY_PATH');
+    throw new Error(
+      'TLS_ACME_ENABLED requires TLS_DOMAINS, TLS_ACME_EMAIL, TLS_CERT_PATH, and TLS_KEY_PATH',
+    );
   }
 
   const webroot = process.env.TLS_ACME_WEBROOT ?? path.join(os.tmpdir(), 'verinode-acme');
@@ -440,8 +873,10 @@ export async function bootstrapTlsFromEnv(app: express.Express, options: EnvTlsB
     chainPath: process.env.TLS_CHAIN_PATH,
   });
   const issuer = new AcmeClientIssuer({
-    directoryUrl: process.env.TLS_ACME_DIRECTORY_URL ?? 'https://acme-v02.api.letsencrypt.org/directory',
-    accountKeyPath: process.env.TLS_ACME_ACCOUNT_KEY_PATH ?? path.join(path.dirname(keyPath), 'acme-account.key'),
+    directoryUrl:
+      process.env.TLS_ACME_DIRECTORY_URL ?? 'https://acme-v02.api.letsencrypt.org/directory',
+    accountKeyPath:
+      process.env.TLS_ACME_ACCOUNT_KEY_PATH ?? path.join(path.dirname(keyPath), 'acme-account.key'),
     challengeStore,
     termsOfServiceAgreed: process.env.TLS_ACME_TERMS_AGREED === 'true',
   });
@@ -477,11 +912,16 @@ export async function bootstrapTlsFromEnv(app: express.Express, options: EnvTlsB
   manager.start();
 
   const tlsPort = process.env.TLS_PORT ?? '3443';
-  const server = https.createServer({
-    SNICallback: reloader.SNICallback.bind(reloader),
-    secureContext: initialContext,
-  }, app);
-  server.listen(Number(tlsPort), () => log.log(`HTTPS server running on port ${tlsPort}`, { 'tls.port': Number(tlsPort) }));
+  const server = https.createServer(
+    {
+      SNICallback: reloader.SNICallback.bind(reloader),
+      secureContext: initialContext,
+    },
+    app,
+  );
+  server.listen(Number(tlsPort), () =>
+    log.log(`HTTPS server running on port ${tlsPort}`, { 'tls.port': Number(tlsPort) }),
+  );
 
   app.locals.tlsCertificateStore = store;
   app.locals.tlsCertificateReloader = reloader;
@@ -495,7 +935,10 @@ export async function bootstrapTlsFromEnv(app: express.Express, options: EnvTlsB
  * Bootstrap TLS/ACME from the centralized config system,
  * falling back to environment variables and defaults.
  */
-export async function bootstrapTlsFromConfig(app: express.Express, options: EnvTlsBootstrapOptions): Promise<https.Server | null> {
+export async function bootstrapTlsFromConfig(
+  app: express.Express,
+  options: EnvTlsBootstrapOptions,
+): Promise<https.Server | null> {
   let tlsCfg: any = {};
   try {
     const mgr = getConfigManager();
@@ -528,7 +971,8 @@ export async function bootstrapTlsFromConfig(app: express.Express, options: EnvT
   });
   const issuer = new AcmeClientIssuer({
     directoryUrl: acmeCfg.directoryUrl ?? 'https://acme-v02.api.letsencrypt.org/directory',
-    accountKeyPath: process.env.TLS_ACME_ACCOUNT_KEY_PATH ?? path.join(path.dirname(keyPath), 'acme-account.key'),
+    accountKeyPath:
+      process.env.TLS_ACME_ACCOUNT_KEY_PATH ?? path.join(path.dirname(keyPath), 'acme-account.key'),
     challengeStore,
     termsOfServiceAgreed: acmeCfg.termsOfServiceAgreed === true,
   });
@@ -561,11 +1005,16 @@ export async function bootstrapTlsFromConfig(app: express.Express, options: EnvT
   manager.start();
 
   const tlsPort = process.env.TLS_PORT ?? '3443';
-  const server = https.createServer({
-    SNICallback: reloader.SNICallback.bind(reloader),
-    secureContext: initialContext,
-  }, app);
-  server.listen(Number(tlsPort), () => log.log(`[tls-acme] HTTPS server running on port ${tlsPort}`));
+  const server = https.createServer(
+    {
+      SNICallback: reloader.SNICallback.bind(reloader),
+      secureContext: initialContext,
+    },
+    app,
+  );
+  server.listen(Number(tlsPort), () =>
+    log.log(`[tls-acme] HTTPS server running on port ${tlsPort}`),
+  );
 
   app.locals.tlsCertificateStore = store;
   app.locals.tlsCertificateReloader = reloader;
@@ -586,7 +1035,10 @@ function ensureTrailingNewline(value: string): string {
 
 async function atomicWriteFile(targetPath: string, content: string, mode: number): Promise<void> {
   await fsp.mkdir(path.dirname(targetPath), { recursive: true });
-  const tmp = path.join(path.dirname(targetPath), `.${path.basename(targetPath)}.${process.pid}.${Date.now()}.tmp`);
+  const tmp = path.join(
+    path.dirname(targetPath),
+    `.${path.basename(targetPath)}.${process.pid}.${Date.now()}.tmp`,
+  );
   const handle = await fsp.open(tmp, 'w', mode);
   try {
     await handle.writeFile(content, 'utf8');

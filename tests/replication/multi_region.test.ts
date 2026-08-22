@@ -48,7 +48,10 @@ assert.equal(coordinator.evaluate(noStandby).action, 'halt_writes');
 assert.equal(coordinator.evaluate(noStandby).writeSafe, false);
 
 const metrics = coordinator.generatePrometheusMetrics(topology);
-assert.match(metrics, /verinode_region_replication_lag_ms\{region="us-east-1",role="primary",health="healthy"\} 100/);
+assert.match(
+  metrics,
+  /verinode_region_replication_lag_ms\{region="us-east-1",role="primary",health="healthy"\} 100/,
+);
 assert.match(metrics, /verinode_region_p99_latency_ms/);
 
 console.log('multi-region replication tests passed');

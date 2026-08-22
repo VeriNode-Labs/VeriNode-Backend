@@ -93,6 +93,3 @@ export function registerConfigDriftRoutes(app: any, auditor: ConfigDriftAuditor)
     `);
   });
 }
-
-
-

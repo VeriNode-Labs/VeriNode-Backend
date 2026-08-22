@@ -22,14 +22,14 @@ export function loadHmacSecret(): Buffer {
   if (!raw) {
     throw new Error(
       '[ConfigAudit] VERINODE_AUDIT_HMAC_SECRET environment variable is required ' +
-      'but was not set. Provide a base64-encoded value of at least 32 bytes.',
+        'but was not set. Provide a base64-encoded value of at least 32 bytes.',
     );
   }
   const decoded = Buffer.from(raw, 'base64');
   if (decoded.length < 32) {
     throw new Error(
       `[ConfigAudit] VERINODE_AUDIT_HMAC_SECRET decoded to only ${decoded.length} byte(s). ` +
-      'A minimum of 32 bytes is required.',
+        'A minimum of 32 bytes is required.',
     );
   }
   return decoded;

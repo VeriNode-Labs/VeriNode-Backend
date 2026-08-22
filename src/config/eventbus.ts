@@ -3,12 +3,7 @@ import { EventEmitter } from 'events';
 /**
  * Configuration event types
  */
-export type ConfigEvent = 
-  | 'loaded'
-  | 'updated'
-  | 'reload_initiated'
-  | 'reload_complete'
-  | 'error';
+export type ConfigEvent = 'loaded' | 'updated' | 'reload_initiated' | 'reload_complete' | 'error';
 
 /**
  * Configuration event payload

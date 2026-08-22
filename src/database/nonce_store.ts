@@ -56,9 +56,7 @@ export class NonceStore {
     if (!existsSync(this.walPath)) return [];
     const content = readFileSync(this.walPath, 'utf-8');
     const lines = content.trim().split('\n').filter(Boolean);
-    return lines
-      .map((line) => JSON.parse(line) as WalEntry)
-      .filter((e) => e.status === 'pending');
+    return lines.map((line) => JSON.parse(line) as WalEntry).filter((e) => e.status === 'pending');
   }
 
   purgeConfirmed(upToNonce: string): void {

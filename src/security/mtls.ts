@@ -97,15 +97,24 @@ export function mtlsConfigFromEnv(env: NodeJS.ProcessEnv = process.env): MtlsCon
     caFile: env.VERINODE_MTLS_CA_FILE,
     trustDomain: env.SPIFFE_TRUST_DOMAIN || 'cluster.local',
     allowedSpiffeIds: splitCsv(env.SPIFFE_ALLOWED_IDS),
-    certMaxValidityMs: positiveInt(env.VERINODE_MTLS_CERT_MAX_VALIDITY_MS, DEFAULT_CERT_MAX_VALIDITY_MS),
-    minSecondsUntilExpiry: positiveInt(env.VERINODE_MTLS_MIN_SECONDS_UNTIL_EXPIRY, DEFAULT_MIN_SECONDS_UNTIL_EXPIRY),
+    certMaxValidityMs: positiveInt(
+      env.VERINODE_MTLS_CERT_MAX_VALIDITY_MS,
+      DEFAULT_CERT_MAX_VALIDITY_MS,
+    ),
+    minSecondsUntilExpiry: positiveInt(
+      env.VERINODE_MTLS_MIN_SECONDS_UNTIL_EXPIRY,
+      DEFAULT_MIN_SECONDS_UNTIL_EXPIRY,
+    ),
     reloadPollMs: positiveInt(env.VERINODE_MTLS_RELOAD_POLL_MS, DEFAULT_RELOAD_POLL_MS),
   };
 }
 
 function splitCsv(value: string | undefined): string[] {
   if (!value) return [];
-  return value.split(',').map((v) => v.trim()).filter(Boolean);
+  return value
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
 }
 
 function positiveInt(value: string | undefined, fallback: number): number {
@@ -116,12 +125,15 @@ function positiveInt(value: string | undefined, fallback: number): number {
 
 function hashInputs(parts: Buffer[]): string {
   const hash = createHash('sha256');
-  for (const part of parts) hash.update(part as any);
+  for (const part of parts) hash.update(part);
   return hash.digest('hex');
 }
 
-export function extractSpiffeIds(cert: X509Certificate | tls.PeerCertificate | undefined): string[] {
-  const subjectAltName = cert instanceof X509Certificate ? cert.subjectAltName : cert?.subjectaltname;
+export function extractSpiffeIds(
+  cert: X509Certificate | tls.PeerCertificate | undefined,
+): string[] {
+  const subjectAltName =
+    cert instanceof X509Certificate ? cert.subjectAltName : cert?.subjectaltname;
   if (!subjectAltName) return [];
   return subjectAltName
     .split(/,\s*/)
@@ -143,7 +155,6 @@ export function validateSpiffeIdentity(
   });
 }
 
-
 export function validateServiceMeshConfig(config: MtlsConfig): string[] {
   const issues: string[] = [];
   if (!config.enabled) return issues;
@@ -160,7 +171,9 @@ export function validateServiceMeshConfig(config: MtlsConfig): string[] {
     issues.push('minSecondsUntilExpiry should be at least 300 seconds for safe rotation alerting');
   }
   if (config.reloadPollMs < 10_000) {
-    issues.push('reloadPollMs should be at least 10000 milliseconds to avoid excessive filesystem polling');
+    issues.push(
+      'reloadPollMs should be at least 10000 milliseconds to avoid excessive filesystem polling',
+    );
   }
   return issues;
 }
@@ -169,7 +182,11 @@ export function validatePeerCertificate(
   cert: tls.PeerCertificate | undefined,
   config: Pick<MtlsConfig, 'trustDomain' | 'allowedSpiffeIds'>,
 ): boolean {
-  return validateSpiffeIdentity(extractSpiffeIds(cert), config.trustDomain, config.allowedSpiffeIds);
+  return validateSpiffeIdentity(
+    extractSpiffeIds(cert),
+    config.trustDomain,
+    config.allowedSpiffeIds,
+  );
 }
 
 /**
@@ -226,7 +243,9 @@ export class MtlsCertificateManager {
   private invalidPeerIdentityFailuresTotal = 0;
 
   // mTLS handshake latency histogram (milliseconds)
-  private static readonly LATENCY_BOUNDARIES: readonly number[] = [1, 5, 10, 25, 50, 100, 250, 500, 1000];
+  private static readonly LATENCY_BOUNDARIES: readonly number[] = [
+    1, 5, 10, 25, 50, 100, 250, 500, 1000,
+  ];
   private handshakeLatencyCounts: number[] = MtlsCertificateManager.LATENCY_BOUNDARIES.map(() => 0);
   private handshakeLatencySum = 0;
   private handshakeLatencyTotal = 0;
@@ -266,17 +285,21 @@ export class MtlsCertificateManager {
     const contentHash = hashInputs([certPem, keyPem, caPem]);
     if (this.loaded && contentHash === this.contentHash) return this.loaded;
 
-    const cert = new X509Certificate(certPem as any);
+    const cert = new X509Certificate(certPem);
     const validFrom = new Date(cert.validFrom);
     const validTo = new Date(cert.validTo);
     const validityMs = validTo.getTime() - validFrom.getTime();
     if (validityMs > this.config.certMaxValidityMs + 1_000) {
-      throw new Error(`mTLS certificate validity exceeds 24-hour policy: ${Math.ceil(validityMs / 1000)}s`);
+      throw new Error(
+        `mTLS certificate validity exceeds 24-hour policy: ${Math.ceil(validityMs / 1000)}s`,
+      );
     }
 
     const spiffeIds = extractSpiffeIds(cert);
-    if (!validateSpiffeIdentity(spiffeIds, this.config.trustDomain)) {
-      throw new Error(`mTLS certificate is missing an allowed SPIFFE identity for trust domain ${this.config.trustDomain}`);
+    if (!validateSpiffeIdentity(spiffeIds, this.config.trustDomain, this.config.allowedSpiffeIds)) {
+      throw new Error(
+        `mTLS certificate is missing an allowed SPIFFE identity for trust domain ${this.config.trustDomain}`,
+      );
     }
 
     const loaded: LoadedCertificate = {
@@ -341,7 +364,8 @@ export class MtlsCertificateManager {
       requestCert: true,
       rejectUnauthorized: true,
       minVersion: 'TLSv1.3',
-      SNICallback: (_servername, cb) => cb(null, this.loaded?.secureContext ?? loaded.secureContext),
+      SNICallback: (_servername, cb) =>
+        cb(null, this.loaded?.secureContext ?? loaded.secureContext),
     };
   }
 
@@ -370,7 +394,8 @@ export class MtlsCertificateManager {
 
   metricsSnapshot(now: Date = new Date()): MtlsMetricsSnapshot {
     const expiresAt = this.loaded?.validTo.getTime() ?? 0;
-    const secondsUntilExpiry = expiresAt === 0 ? 0 : Math.max(0, Math.floor((expiresAt - now.getTime()) / 1000));
+    const secondsUntilExpiry =
+      expiresAt === 0 ? 0 : Math.max(0, Math.floor((expiresAt - now.getTime()) / 1000));
     return {
       certificateLoaded: this.loaded !== null,
       certificateExpiresAtUnix: expiresAt === 0 ? 0 : Math.floor(expiresAt / 1000),
@@ -390,14 +415,19 @@ export class MtlsCertificateManager {
 
   prometheusMetrics(): string {
     const m = this.metricsSnapshot();
-    const expiringSoon = m.certificateLoaded && m.certificateSecondsUntilExpiry < this.config.minSecondsUntilExpiry ? 1 : 0;
+    const expiringSoon =
+      m.certificateLoaded && m.certificateSecondsUntilExpiry < this.config.minSecondsUntilExpiry
+        ? 1
+        : 0;
     const latencyBucketLines: string[] = [];
     for (let i = 0; i < m.handshakeLatencyBuckets.boundaries.length; i++) {
       latencyBucketLines.push(
         `verinode_mtls_handshake_duration_ms_bucket{le="${m.handshakeLatencyBuckets.boundaries[i]}"} ${m.handshakeLatencyBuckets.counts[i]}`,
       );
     }
-    latencyBucketLines.push(`verinode_mtls_handshake_duration_ms_bucket{le="+Inf"} ${m.handshakeLatencyBuckets.total}`);
+    latencyBucketLines.push(
+      `verinode_mtls_handshake_duration_ms_bucket{le="+Inf"} ${m.handshakeLatencyBuckets.total}`,
+    );
     return [
       '# HELP verinode_mtls_certificate_loaded Whether an mTLS workload certificate is loaded.',
       '# TYPE verinode_mtls_certificate_loaded gauge',
@@ -428,7 +458,6 @@ export class MtlsCertificateManager {
       '',
     ].join('\n');
   }
-
 }
 
 /**
@@ -456,7 +485,9 @@ export function mtlsConfigFromCentralConfig(): MtlsConfig {
   };
 }
 
-export function createMtlsManagerFromEnv(env: NodeJS.ProcessEnv = process.env): MtlsCertificateManager {
+export function createMtlsManagerFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): MtlsCertificateManager {
   return new MtlsCertificateManager(mtlsConfigFromEnv(env));
 }
 

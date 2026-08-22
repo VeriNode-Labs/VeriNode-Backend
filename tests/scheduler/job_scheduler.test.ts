@@ -75,7 +75,10 @@ function createMockDb() {
         return { rows: [{ id }], rowCount: 1 };
       }
       // SELECT by id
-      if (text.includes('SELECT * FROM distributed_jobs WHERE id = $1') && !text.includes('FOR UPDATE')) {
+      if (
+        text.includes('SELECT * FROM distributed_jobs WHERE id = $1') &&
+        !text.includes('FOR UPDATE')
+      ) {
         const jobId = params?.[0] as string;
         const job = jobs.get(jobId);
         return { rows: job ? [toRow(job)] : [], rowCount: job ? 1 : 0 };
@@ -149,7 +152,11 @@ function createMockDb() {
         return { rows: [], rowCount: 1 };
       }
       // UPDATE lease renewal
-      if (text.includes('UPDATE distributed_jobs') && text.includes('locked_until') && text.includes('locked_by')) {
+      if (
+        text.includes('UPDATE distributed_jobs') &&
+        text.includes('locked_until') &&
+        text.includes('locked_by')
+      ) {
         const jobId = params?.[0] as string;
         const worker = params?.[1] as string;
         const job = jobs.get(jobId);
@@ -354,10 +361,12 @@ async function runTests() {
     const claimPromises: Promise<void>[] = [];
     for (const workerId of ['w1', 'w2', 'w3']) {
       for (let i = 0; i < 5; i++) {
-        claimPromises.push((async () => {
-          const job = await store.claimJob('batch', workerId, 30000);
-          if (job) claimed.set(job.id, workerId);
-        })());
+        claimPromises.push(
+          (async () => {
+            const job = await store.claimJob('batch', workerId, 30000);
+            if (job) claimed.set(job.id, workerId);
+          })(),
+        );
       }
     }
     await Promise.all(claimPromises);

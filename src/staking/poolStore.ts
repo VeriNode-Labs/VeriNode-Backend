@@ -234,7 +234,11 @@ export class PgBondPoolStore implements BondPoolStore {
     }
   }
 
-  private async incrementPoolBalance(client: PgClient, poolId: string, amount: bigint): Promise<QueryResult<PoolRow>> {
+  private async incrementPoolBalance(
+    client: PgClient,
+    poolId: string,
+    amount: bigint,
+  ): Promise<QueryResult<PoolRow>> {
     for (let attempt = 0; attempt < this.maxOptimisticAttempts; attempt++) {
       const current = await client.query<PoolRow>(
         'SELECT id, balance, version FROM bond_pools WHERE id = $1',
@@ -259,7 +263,11 @@ export class PgBondPoolStore implements BondPoolStore {
     throw new Error(`Bond pool ${poolId} balance update conflicted too many times`);
   }
 
-  private async decrementPoolBalance(client: PgClient, poolId: string, amount: bigint): Promise<QueryResult<PoolRow>> {
+  private async decrementPoolBalance(
+    client: PgClient,
+    poolId: string,
+    amount: bigint,
+  ): Promise<QueryResult<PoolRow>> {
     for (let attempt = 0; attempt < this.maxOptimisticAttempts; attempt++) {
       const current = await client.query<PoolRow>(
         'SELECT id, balance, version FROM bond_pools WHERE id = $1',

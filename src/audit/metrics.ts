@@ -24,19 +24,17 @@ export const changesTotal = meter.createCounter('config_audit.changes_total', {
  * Incremented on every DriftReport produced.
  * Attributes: severity ('critical' | 'non_critical')
  */
-export const driftDetectionsTotal = meter.createCounter(
-  'config_audit.drift_detections_total',
-  { description: 'Total drift reports produced' },
-);
+export const driftDetectionsTotal = meter.createCounter('config_audit.drift_detections_total', {
+  description: 'Total drift reports produced',
+});
 
 /**
  * Incremented when an audit entry is evicted from the in-memory queue due
  * to the queue being at capacity (1000 entries).
  */
-export const queueDroppedTotal = meter.createCounter(
-  'config_audit.queue_dropped_total',
-  { description: 'Audit entries dropped due to in-memory queue saturation' },
-);
+export const queueDroppedTotal = meter.createCounter('config_audit.queue_dropped_total', {
+  description: 'Audit entries dropped due to in-memory queue saturation',
+});
 
 /**
  * Incremented when healthCheck() returns 'degraded' or 'unhealthy'.
@@ -54,14 +52,11 @@ export const healthCheckFailuresTotal = meter.createCounter(
  * to DriftReport completion.  Target P99 ≤ 100ms.
  * Bucket boundaries chosen to bracket the 100ms SLO clearly.
  */
-export const driftLatencyMs = meter.createHistogram(
-  'config_audit.drift_detection_latency_ms',
-  {
-    description: 'Drift detection latency in milliseconds (target P99 ≤ 100ms)',
-    unit: 'ms',
-    advice: { explicitBucketBoundaries: [10, 25, 50, 100, 250, 500] },
-  },
-);
+export const driftLatencyMs = meter.createHistogram('config_audit.drift_detection_latency_ms', {
+  description: 'Drift detection latency in milliseconds (target P99 ≤ 100ms)',
+  unit: 'ms',
+  advice: { explicitBucketBoundaries: [10, 25, 50, 100, 250, 500] },
+});
 
 // ── Observable gauge ──────────────────────────────────────────────────────────
 
@@ -73,8 +68,7 @@ export const driftLatencyMs = meter.createHistogram(
 export const activeBaselineAgeSeconds = meter.createObservableGauge(
   'config_audit.active_baseline_age_seconds',
   {
-    description:
-      'Age of the active configuration baseline in seconds; -1 if none exists',
+    description: 'Age of the active configuration baseline in seconds; -1 if none exists',
     unit: 's',
   },
 );

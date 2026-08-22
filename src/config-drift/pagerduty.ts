@@ -51,7 +51,6 @@ export class HttpPagerDutyClient implements PagerDutyClient {
     }
 
     const res = await fetchFn('https://events.pagerduty.com/v2/enqueue', {
-
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -67,7 +66,9 @@ export class HttpPagerDutyClient implements PagerDutyClient {
 
 export function alertIdFor(report: DriftReport): string {
   const digest = createHash('sha256')
-    .update(`${report.snapshotId}|${report.runtimeHash}|${report.baselineHash}|${report.summary.total}`)
+    .update(
+      `${report.snapshotId}|${report.runtimeHash}|${report.baselineHash}|${report.summary.total}`,
+    )
     .digest('hex')
     .slice(0, 32);
   return `config-drift:${digest}`;
@@ -91,4 +92,3 @@ export function buildAlertIfCritical(args: {
     driftReport: report,
   };
 }
-

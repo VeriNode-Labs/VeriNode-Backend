@@ -79,10 +79,9 @@ export class CacheLayer {
     const started = this.clock();
     const backend = this.redisUrl && !this.redisUnavailable ? 'redis' : 'memory';
     try {
-      const encoded = this.redisUrl && !this.redisUnavailable
-        ? await this.redisGet(key)
-        : this.memoryGet(key);
-      const result = encoded === null ? null : JSON.parse(encoded) as T;
+      const encoded =
+        this.redisUrl && !this.redisUnavailable ? await this.redisGet(key) : this.memoryGet(key);
+      const result = encoded === null ? null : (JSON.parse(encoded) as T);
       cacheRequestsTotal.add(1, { backend, result: result === null ? 'miss' : 'hit' });
       return result;
     } catch (err) {
@@ -93,7 +92,10 @@ export class CacheLayer {
       }
       throw err;
     } finally {
-      cacheOperationDurationMs.record(Math.max(0, this.clock() - started), { backend, operation: 'get' });
+      cacheOperationDurationMs.record(Math.max(0, this.clock() - started), {
+        backend,
+        operation: 'get',
+      });
     }
   }
 
@@ -119,7 +121,10 @@ export class CacheLayer {
       }
       throw err;
     } finally {
-      cacheOperationDurationMs.record(Math.max(0, this.clock() - started), { backend, operation: 'set' });
+      cacheOperationDurationMs.record(Math.max(0, this.clock() - started), {
+        backend,
+        operation: 'set',
+      });
     }
   }
 
@@ -136,7 +141,11 @@ export class CacheLayer {
     }
   }
 
-  async getOrSet<T>(key: string, loader: () => Promise<T> | T, options: CacheSetOptions = {}): Promise<T> {
+  async getOrSet<T>(
+    key: string,
+    loader: () => Promise<T> | T,
+    options: CacheSetOptions = {},
+  ): Promise<T> {
     const cached = await this.get<T>(key);
     if (cached !== null) return cached;
     const value = await loader();
@@ -145,14 +154,16 @@ export class CacheLayer {
   }
 
   prometheusMetrics(): string {
-    return [
-      '# HELP verinode_cache_entries Number of in-memory cache entries on this node.',
-      '# TYPE verinode_cache_entries gauge',
-      `verinode_cache_entries{namespace="${this.namespace}"} ${this.memory.size}`,
-      '# HELP verinode_cache_redis_available Redis cache availability flag (1 available, 0 unavailable or disabled).',
-      '# TYPE verinode_cache_redis_available gauge',
-      `verinode_cache_redis_available{namespace="${this.namespace}"} ${this.redisUrl && !this.redisUnavailable ? 1 : 0}`,
-    ].join('\n') + '\n';
+    return (
+      [
+        '# HELP verinode_cache_entries Number of in-memory cache entries on this node.',
+        '# TYPE verinode_cache_entries gauge',
+        `verinode_cache_entries{namespace="${this.namespace}"} ${this.memory.size}`,
+        '# HELP verinode_cache_redis_available Redis cache availability flag (1 available, 0 unavailable or disabled).',
+        '# TYPE verinode_cache_redis_available gauge',
+        `verinode_cache_redis_available{namespace="${this.namespace}"} ${this.redisUrl && !this.redisUnavailable ? 1 : 0}`,
+      ].join('\n') + '\n'
+    );
   }
 
   private cacheKey(key: string): string {
@@ -210,7 +221,9 @@ export class CacheLayer {
 export function createCacheLayerFromEnv(env: NodeJS.ProcessEnv = process.env): CacheLayer {
   return new CacheLayer({
     redisUrl: env.CACHE_REDIS_URL || env.REDIS_URL,
-    defaultTtlSeconds: env.CACHE_DEFAULT_TTL_SECONDS ? Number(env.CACHE_DEFAULT_TTL_SECONDS) : undefined,
+    defaultTtlSeconds: env.CACHE_DEFAULT_TTL_SECONDS
+      ? Number(env.CACHE_DEFAULT_TTL_SECONDS)
+      : undefined,
     namespace: env.CACHE_NAMESPACE,
     maxEntries: env.CACHE_MAX_ENTRIES ? Number(env.CACHE_MAX_ENTRIES) : undefined,
   });

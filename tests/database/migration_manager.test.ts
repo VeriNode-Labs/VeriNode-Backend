@@ -20,7 +20,13 @@ class MemoryClient {
           .filter((version) => version > target)
           .sort()
           .reverse()
-          .map((version) => ({ version, name: `${version}_test`, checksum: 'hash', appliedAt: new Date(), executionMs: 1 })) as T[],
+          .map((version) => ({
+            version,
+            name: `${version}_test`,
+            checksum: 'hash',
+            appliedAt: new Date(),
+            executionMs: 1,
+          })) as T[],
       };
     }
     if (sql.startsWith('INSERT INTO schema_migrations')) {
@@ -36,15 +42,26 @@ class MemoryClient {
 async function main() {
   const dir = mkdtempSync(join(tmpdir(), 'verinode-migrations-'));
   try {
-    writeFileSync(join(dir, '001_create_users.sql'), '-- @up\nCREATE TABLE users(id INT);\n-- @down\nDROP TABLE users;\n');
-    writeFileSync(join(dir, '002_add_email.sql'), '-- @up\nALTER TABLE users ADD COLUMN email TEXT;\n-- @down\nALTER TABLE users DROP COLUMN email;\n');
+    writeFileSync(
+      join(dir, '001_create_users.sql'),
+      '-- @up\nCREATE TABLE users(id INT);\n-- @down\nDROP TABLE users;\n',
+    );
+    writeFileSync(
+      join(dir, '002_add_email.sql'),
+      '-- @up\nALTER TABLE users ADD COLUMN email TEXT;\n-- @down\nALTER TABLE users DROP COLUMN email;\n',
+    );
 
     const events: string[] = [];
     const client = new MemoryClient();
-    const manager = new MigrationManager(client, dir, (event) => events.push(`${event.type}:${event.version}`));
+    const manager = new MigrationManager(client, dir, (event) =>
+      events.push(`${event.type}:${event.version}`),
+    );
 
     const pending = await manager.pending();
-    assert.deepEqual(pending.map((migration) => migration.version), ['001', '002']);
+    assert.deepEqual(
+      pending.map((migration) => migration.version),
+      ['001', '002'],
+    );
 
     const applied = await manager.migrate('001');
     assert.equal(applied.length, 1);
@@ -53,12 +70,20 @@ async function main() {
     assert(events.includes('migration_completed:001'));
 
     const remaining = await manager.pending();
-    assert.deepEqual(remaining.map((migration) => migration.version), ['002']);
+    assert.deepEqual(
+      remaining.map((migration) => migration.version),
+      ['002'],
+    );
 
     await manager.migrate();
     const rolledBack = await manager.rollback('000');
-    assert.deepEqual(rolledBack.map((migration) => migration.version), ['002', '001']);
-    assert(client.queries.some((query) => query.sql.includes('ALTER TABLE users DROP COLUMN email')));
+    assert.deepEqual(
+      rolledBack.map((migration) => migration.version),
+      ['002', '001'],
+    );
+    assert(
+      client.queries.some((query) => query.sql.includes('ALTER TABLE users DROP COLUMN email')),
+    );
     assert(client.queries.some((query) => query.sql.includes('DROP TABLE users')));
     assert.equal(client.activeVersions.size, 0);
     assert(events.includes('rollback_completed:002'));

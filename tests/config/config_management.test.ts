@@ -20,8 +20,9 @@ async function main() {
     feature_flags: { overrides: { payouts: 'maybe' } },
   });
   assert.equal(invalid.valid, false);
-  assert(invalid.errors.some(e => e.path === 'db.port'));
-  assert(invalid.errors.some(e => e.path === 'app.environment'));
+  assert(invalid.errors.some((e) => e.path === 'db.port'));
+  assert(invalid.errors.some((e) => e.path === 'app.environment'));
+  assert(invalid.errors.some((e) => e.path === 'feature_flags.overrides.payouts'));
 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'verinode-config-'));
   const configFile = path.join(dir, 'config.json');
@@ -32,7 +33,13 @@ async function main() {
   assert.equal(manager.getIn('app.port'), 3001);
 
   let observedPort = 0;
-  manager.onChangePath('app.port', value => { observedPort = value; }, 'test-port-watch');
+  manager.onChangePath(
+    'app.port',
+    (value) => {
+      observedPort = value;
+    },
+    'test-port-watch',
+  );
   manager.update('app.port', 3002);
   assert.equal(observedPort, 3002);
   assert.throws(() => manager.update('app.port', 70000), /Configuration validation failed/);
@@ -41,7 +48,7 @@ async function main() {
   console.log('config_management tests passed');
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error(err);
   process.exit(1);
 });

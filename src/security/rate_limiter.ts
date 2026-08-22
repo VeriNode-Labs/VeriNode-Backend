@@ -16,7 +16,12 @@ interface BucketState {
 }
 
 interface BucketStore {
-  consume(key: string, nowMs: number, refillRatePerMs: number, burstCapacity: number): Promise<ConsumeResult>;
+  consume(
+    key: string,
+    nowMs: number,
+    refillRatePerMs: number,
+    burstCapacity: number,
+  ): Promise<ConsumeResult>;
 }
 
 interface ConsumeResult {
@@ -51,7 +56,11 @@ function normalizePattern(pattern: string): RegExp {
   return new RegExp(`^${regexString}$`);
 }
 
-function resolveTier(path: string, endpointTiers: Record<string, RateLimitTier>, defaultTier: RateLimitTier): RateLimitTier {
+function resolveTier(
+  path: string,
+  endpointTiers: Record<string, RateLimitTier>,
+  defaultTier: RateLimitTier,
+): RateLimitTier {
   const exact = endpointTiers[path];
   if (exact) return exact;
   for (const pattern of Object.keys(endpointTiers)) {
@@ -73,7 +82,12 @@ function retryAfterFromTokens(tokens: number, refillRatePerMs: number): number {
 class InMemoryBucketStore implements BucketStore {
   private buckets = new Map<string, BucketState>();
 
-  async consume(key: string, nowMs: number, refillRatePerMs: number, burstCapacity: number): Promise<ConsumeResult> {
+  async consume(
+    key: string,
+    nowMs: number,
+    refillRatePerMs: number,
+    burstCapacity: number,
+  ): Promise<ConsumeResult> {
     const existing = this.buckets.get(key) ?? { tokens: burstCapacity, lastRefillMs: nowMs };
     const elapsed = Math.max(0, nowMs - existing.lastRefillMs);
     const tokens = Math.min(burstCapacity, existing.tokens + elapsed * refillRatePerMs);
@@ -117,7 +131,12 @@ class RedisBucketStore implements BucketStore {
     return client;
   }
 
-  async consume(key: string, nowMs: number, refillRatePerMs: number, burstCapacity: number): Promise<ConsumeResult> {
+  async consume(
+    key: string,
+    nowMs: number,
+    refillRatePerMs: number,
+    burstCapacity: number,
+  ): Promise<ConsumeResult> {
     const client = await this.getClient();
     const script = `
       local now = tonumber(ARGV[1])
@@ -145,7 +164,12 @@ class RedisBucketStore implements BucketStore {
 
     const result = await client.eval(script, {
       keys: [key],
-      arguments: [String(nowMs), String(refillRatePerMs), String(burstCapacity), String(REDIS_ENTRY_TTL_SECONDS)],
+      arguments: [
+        String(nowMs),
+        String(refillRatePerMs),
+        String(burstCapacity),
+        String(REDIS_ENTRY_TTL_SECONDS),
+      ],
     });
 
     return {
@@ -170,7 +194,7 @@ export function createRateLimitingMiddleware(options: RateLimiterOptions = {}): 
       const tier = resolveTier(req.path, endpointTiers, defaultTier);
       const tierConfig = TIER_DEFINITION[tier];
       const refillRatePerMs = tierConfig.perMinute / 60 / 1000;
-      const burstCapacity = tierConfig.perMinute / 60 * BUCKET_WINDOW_SECONDS;
+      const burstCapacity = (tierConfig.perMinute / 60) * BUCKET_WINDOW_SECONDS;
       const clientKey = keyGenerator(req);
       const routeKey = req.path;
       const storeKey = `rate-limit:${tier}:${routeKey}:${clientKey}`;

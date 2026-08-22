@@ -190,9 +190,8 @@ export class NonceSequencer implements SlashingAgent {
     submitSpan: SpanContext,
   ): Promise<TransactionResult> {
     const handler = async (nextMessage: SlashingProcessingMessage): Promise<TransactionResult> => {
-      const result = await context.with(
-        trace.setSpan(context.active(), submitSpan.span),
-        () => this.rpcClient.sendTransaction(nextMessage.txPayload),
+      const result = await context.with(trace.setSpan(context.active(), submitSpan.span), () =>
+        this.rpcClient.sendTransaction(nextMessage.txPayload),
       );
       if (!result.success) {
         throw new SlashingSubmissionError(result);
@@ -226,9 +225,8 @@ export class NonceSequencer implements SlashingAgent {
     this.pendingCount++;
     try {
       // Propagate the resubmit-span context across the await boundary.
-      const result = await context.with(
-        trace.setSpan(context.active(), span.span),
-        () => this.rpcClient.sendTransaction(entry.txHash),
+      const result = await context.with(trace.setSpan(context.active(), span.span), () =>
+        this.rpcClient.sendTransaction(entry.txHash),
       );
       if (result.success) {
         entry.status = 'confirmed';

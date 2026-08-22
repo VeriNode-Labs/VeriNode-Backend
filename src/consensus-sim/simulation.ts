@@ -49,7 +49,12 @@ export class Simulation {
     for (const v of this.validators) {
       // if timeout and in timeout duration, do not propose
       const toff = this.faultSpec?.timeout;
-      if (toff && toff.by && toff.by.includes(v.id) && (!toff.durationRounds || round <= toff.durationRounds)) {
+      if (
+        toff &&
+        toff.by &&
+        toff.by.includes(v.id) &&
+        (!toff.durationRounds || round <= toff.durationRounds)
+      ) {
         continue;
       }
       proposals.set(v.id, `${v.id}-v${round}`);
@@ -78,7 +83,9 @@ export class Simulation {
         if (delay && Math.random() < (delay.probability ?? 1)) {
           const jitter = delay.jitter ? (Math.random() - 0.5) * delay.jitter : 0;
           const ms = Math.max(0, delay.ms + jitter);
-          deliveries.push(new Promise((res) => setTimeout(() => res({ from, to: dest, round, payload: pl }), ms)));
+          deliveries.push(
+            new Promise((res) => setTimeout(() => res({ from, to: dest, round, payload: pl }), ms)),
+          );
         } else {
           deliveries.push(Promise.resolve({ from, to: dest, round, payload: pl }));
         }

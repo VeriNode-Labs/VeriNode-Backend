@@ -101,7 +101,10 @@ export function computeDriftReport(input: DriftDiffInput): DriftReport {
   };
 }
 
-export function pickCriticalPrefix(policyPrefixes: string[], findings: DriftFinding[]): string | undefined {
+export function pickCriticalPrefix(
+  policyPrefixes: string[],
+  findings: DriftFinding[],
+): string | undefined {
   for (const f of findings) {
     for (const prefix of policyPrefixes) {
       if (keyMatchesPrefix(f.key, prefix)) return prefix;
@@ -109,4 +112,3 @@ export function pickCriticalPrefix(policyPrefixes: string[], findings: DriftFind
   }
   return undefined;
 }
-

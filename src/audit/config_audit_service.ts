@@ -78,15 +78,16 @@ export class ConfigAuditService {
         void this.driftDetector.detect(this.configManager.get());
 
         // Update active baseline age gauge
-        void this.baselineManager.getActive().then((baseline) => {
-          const ageSeconds = baseline
-            ? (Date.now() - baseline.createdAt.getTime()) / 1000
-            : -1;
-          // Observable gauge is updated via the addBatchObservableCallback pattern;
-          // we record via a direct add on a regular gauge equivalent here.
-          // The gauge value is surfaced through healthCheck and metrics callbacks.
-          void ageSeconds; // consumed via healthCheck / OTel observable callback below
-        }).catch(() => {});
+        void this.baselineManager
+          .getActive()
+          .then((baseline) => {
+            const ageSeconds = baseline ? (Date.now() - baseline.createdAt.getTime()) / 1000 : -1;
+            // Observable gauge is updated via the addBatchObservableCallback pattern;
+            // we record via a direct add on a regular gauge equivalent here.
+            // The gauge value is surfaced through healthCheck and metrics callbacks.
+            void ageSeconds; // consumed via healthCheck / OTel observable callback below
+          })
+          .catch(() => {});
       } catch (err) {
         this.logger.error('[ConfigAuditService] Unhandled error in updated listener', {
           'error.message': (err as Error).message,
@@ -102,9 +103,7 @@ export class ConfigAuditService {
       async (observableResult: any) => {
         try {
           const baseline = await this.baselineManager.getActive();
-          const age = baseline
-            ? (Date.now() - baseline.createdAt.getTime()) / 1000
-            : -1;
+          const age = baseline ? (Date.now() - baseline.createdAt.getTime()) / 1000 : -1;
           observableResult.observe(instruments.activeBaselineAgeSeconds, age);
         } catch {
           observableResult.observe(instruments.activeBaselineAgeSeconds, -1);
@@ -136,10 +135,7 @@ export class ConfigAuditService {
    */
   async captureBaseline(actor: ActorContext): Promise<Baseline> {
     try {
-      const baseline = await this.baselineManager.capture(
-        this.configManager.get(),
-        actor,
-      );
+      const baseline = await this.baselineManager.capture(this.configManager.get(), actor);
       this.eventBus.emitEvent('baseline_captured' as any, {
         baselineId: baseline.id,
         actor: actor.actorId,
@@ -211,15 +207,17 @@ export class ConfigAuditService {
           'error.message': (err as Error).message,
         });
 
-        await this.auditLogger.write({
-          configPath: dk.path,
-          previousValue: dk.liveValue,
-          newValue: dk.baselineValue,
-          actor: actor.actorId,
-          sourceIp: actor.sourceIp,
-          changedAt: new Date(),
-          changeSource: 'rollback_skip',
-        }).catch(() => {});
+        await this.auditLogger
+          .write({
+            configPath: dk.path,
+            previousValue: dk.liveValue,
+            newValue: dk.baselineValue,
+            actor: actor.actorId,
+            sourceIp: actor.sourceIp,
+            changedAt: new Date(),
+            changeSource: 'rollback_skip',
+          })
+          .catch(() => {});
 
         skipped.push(dk.path);
       }
@@ -255,13 +253,9 @@ export class ConfigAuditService {
 
     // Last write
     const lastWrite = this.auditLogger.lastWrite;
-    details['last_successful_write'] = lastWrite
-      ? lastWrite.toISOString()
-      : 'never';
+    details['last_successful_write'] = lastWrite ? lastWrite.toISOString() : 'never';
 
-    const secondsSinceWrite = lastWrite
-      ? (Date.now() - lastWrite.getTime()) / 1000
-      : Infinity;
+    const secondsSinceWrite = lastWrite ? (Date.now() - lastWrite.getTime()) / 1000 : Infinity;
 
     // Determine status
     let status: HealthStatus;

@@ -28,7 +28,7 @@ function uuidv5FromSha256(sha256hex: string): string {
   b[6] = (b[6] & 0x0f) | 0x50; // version 5
   b[8] = (b[8] & 0x3f) | 0x80; // variant RFC 4122
   const h = b.toString('hex');
-  return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20,32)}`;
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
 }
 
 // ── Alert payload ─────────────────────────────────────────────────────────────
@@ -82,9 +82,7 @@ export class AlertDispatcher {
 
     // Derive idempotency key: SHA-256(baselineId + ":" + floor(ts/1000))
     const tsBucket = Math.floor(detectedAt.getTime() / 1000);
-    const idempotencyHash = createHash('sha256')
-      .update(`${baselineId}:${tsBucket}`)
-      .digest('hex');
+    const idempotencyHash = createHash('sha256').update(`${baselineId}:${tsBucket}`).digest('hex');
     const alertId = uuidv5FromSha256(idempotencyHash);
 
     const payload = this._buildPayload(alertId, report, partialError, detectedAt);
@@ -123,8 +121,7 @@ export class AlertDispatcher {
     detectedAt: Date,
   ): AlertPayload {
     const driftedKeys = report?.driftedKeys.map((k) => k.path) ?? [];
-    const hasCritical =
-      report?.driftedKeys.some((k) => k.severity === 'critical') ?? true;
+    const hasCritical = report?.driftedKeys.some((k) => k.severity === 'critical') ?? true;
 
     const currentValues: Record<string, unknown> = {};
     for (const dk of report?.driftedKeys ?? []) {

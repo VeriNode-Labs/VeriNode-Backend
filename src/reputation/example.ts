@@ -1,6 +1,6 @@
 /**
  * Example Usage of Reputation Service
- * 
+ *
  * This file demonstrates how to use the ReputationScoreService
  * to manage node reputation scores with race condition protection.
  */
@@ -25,7 +25,7 @@ async function main() {
   await service.initializeSchema();
 
   console.log('=== Example 1: Basic Node Initialization ===');
-  
+
   // Initialize a new node with default score (0)
   await service.initializeNode('node-alice');
   console.log('Node alice initialized');
@@ -78,8 +78,12 @@ async function main() {
     service.applySlashing('node-charlie', 500),
   ]);
 
-  console.log(`Concurrent reward: ${concurrentReward.previousScore} → ${concurrentReward.newScore}`);
-  console.log(`Concurrent slashing: ${concurrentSlash.previousScore} → ${concurrentSlash.newScore}`);
+  console.log(
+    `Concurrent reward: ${concurrentReward.previousScore} → ${concurrentReward.newScore}`,
+  );
+  console.log(
+    `Concurrent slashing: ${concurrentSlash.previousScore} → ${concurrentSlash.newScore}`,
+  );
 
   const charlieScore = await service.getReputationScore('node-charlie');
   console.log(`Final score for charlie: ${charlieScore?.score}`);
@@ -107,7 +111,7 @@ async function main() {
 
   // Apply operations to multiple nodes concurrently
   const operations = [];
-  
+
   // Apply rewards to all nodes
   for (const nodeId of nodeIds) {
     operations.push(service.applyReward(nodeId, 20));
@@ -156,7 +160,7 @@ async function main() {
   await service.initializeNode('node-monitor-2', 700);
 
   await service.applySlashing('node-monitor-1', 100);
-  await service.applySlashing('node-monitor-1', 100);  // Second slash
+  await service.applySlashing('node-monitor-1', 100); // Second slash
   await service.applySlashing('node-monitor-2', 200);
 
   const monitor1 = await service.getReputationScore('node-monitor-1');
