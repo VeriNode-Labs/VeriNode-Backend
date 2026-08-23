@@ -1,0 +1,8 @@
+{
+  "title": "VeriNode Configuration Management",
+  "panels": [
+    { "title": "Config reload successes", "expr": "sum(rate(verinode_config_reload_total[5m]))" },
+    { "title": "Config reload failures", "expr": "sum(rate(verinode_config_reload_failed_total[5m]))" },
+    { "title": "Config reload P99", "expr": "histogram_quantile(0.99, sum(rate(verinode_config_reload_duration_ms_bucket[5m])) by (le))" }
+  ]
+}

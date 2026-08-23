@@ -18,12 +18,16 @@ CREATE TABLE IF NOT EXISTS distributed_jobs (
   updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
--- Critical partial index for < 100ms P99 lease acquisition
--- Only indexes jobs that are ready for execution
+-- Critical partial index for < 100ms P99 lease acquisition.
+-- NOTE: the predicate must be IMMUTABLE, so the lock-expiry condition
+-- (locked_until <= NOW()) cannot live here — Postgres rejects NOW() in index
+-- predicates because index membership is fixed at write time while NOW()
+-- changes continuously. The static status filter below still excludes the
+-- bulk of the table (completed/failed jobs); lease queries apply the
+-- time-dependent locked_until check at query time and can use this index.
 CREATE INDEX IF NOT EXISTS idx_distributed_jobs_ready
   ON distributed_jobs (run_at, job_type)
-  WHERE status IN ('pending', 'running')
-    AND (locked_until IS NULL OR locked_until <= NOW());
+  WHERE status IN ('pending', 'running');
 
 -- Index for monitoring queries
 CREATE INDEX IF NOT EXISTS idx_distributed_jobs_status

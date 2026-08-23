@@ -1,0 +1,102 @@
+# VeriNode local development stack ("localnet").
+#
+# One command (`make localnet`) brings up the full backend with its
+# dependencies and monitoring, so a new contributor does not have to wire
+# Postgres, the OTel collector, Prometheus and Grafana by hand.
+#
+# NOTE on scope: this repo is the ROSCA (savings-circle) API backend, not an
+# L1 validator client. "Validators" here are the node/validator identities the
+# backend tracks (bond_pools, validator_stakes, reputations); the seed script
+# provisions 8 of them with stakes + balances (the "pre-funded accounts"
+# equivalent), and the mock generator emits heartbeat/reward telemetry (the
+# "mock attestation" equivalent). See README.md in this directory.
+
+name: verinode-localnet
+
+services:
+  postgres:
+    # timescaledb-ha bundles TimescaleDB + pg_cron, both required by the
+    # uptime_heartbeat migration (002_uptime_schema.sql). pg_cron must be
+    # preloaded (and pointed at the app database) BEFORE initdb runs the
+    # migrations, or CREATE EXTENSION pg_cron aborts the init.
+    image: timescale/timescaledb-ha:pg16
+    command:
+      - -c
+      - shared_preload_libraries=timescaledb,pg_cron
+      - -c
+      - cron.database_name=verinode
+    environment:
+      POSTGRES_USER: verinode
+      POSTGRES_PASSWORD: verinode
+      POSTGRES_DB: verinode
+    ports:
+      # Override with LOCALNET_PG_PORT if 5432 is taken on the host.
+      - "${LOCALNET_PG_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Migrations are pure, idempotent SQL — run them on first init, in
+      # numeric order, before anything connects.
+      - ../../src/database/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U verinode -d verinode"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.109.0
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "8889:8889"   # Prometheus exporter (collector's own metrics)
+
+  api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: development
+      PORT: "3000"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: verinode
+      DB_PASSWORD: verinode
+      DB_NAME: verinode
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_SERVICE_NAME: verinode-api
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
+volumes:
+  pgdata:

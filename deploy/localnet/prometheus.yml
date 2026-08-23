@@ -1,0 +1,20 @@
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+
+scrape_configs:
+  # The VeriNode API exposes Prometheus text-format metrics at GET /metrics
+  # (see index.js and src/api/metrics/prometheus.ts).
+  - job_name: verinode-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:3000"]
+
+  # The OTel collector's own Prometheus exporter.
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["otel-collector:8889"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

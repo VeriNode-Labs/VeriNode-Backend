@@ -1,0 +1,9 @@
+{
+  "title": "VeriNode Structured Logging",
+  "schemaVersion": 39,
+  "panels": [
+    { "type": "timeseries", "title": "Log records by severity", "targets": [{ "expr": "sum(rate(log_records_total{service_name=\"verinode-backend\"}[5m])) by (severity_text)" }] },
+    { "type": "timeseries", "title": "Log ingestion failures", "targets": [{ "expr": "rate(otelcol_receiver_refused_log_records[5m])" }] },
+    { "type": "timeseries", "title": "HTTP server P99 latency", "targets": [{ "expr": "histogram_quantile(0.99, sum(rate(http_server_duration_seconds_bucket{service_name=\"verinode-backend\"}[5m])) by (le))" }] }
+  ]
+}
