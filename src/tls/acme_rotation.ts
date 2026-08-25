@@ -1077,3 +1077,53 @@ function intEnv(name: string, fallback: number): number {
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return parsed;
 }
+
+// ── Management API ─────────────────────────────────────────────────────────────
+
+/**
+ * Register certificate management routes onto an Express-compatible app.
+ *
+ *  GET  /api/v1/certs/status           — returns { services: ServiceCertStatus[] }
+ *  POST /api/v1/certs/renew            — body: {} | { service: string }
+ *                                        returns { results: Array<{service,renewed,...}> }
+ *
+ * Any route error is returned as { error: string } with HTTP 500.
+ */
+export function registerCertManagementRoutes(
+  app: { get: Function; post: Function },
+  mgr: CertLifecycleManager,
+): void {
+  // GET /api/v1/certs/status
+  (app as any).get('/api/v1/certs/status', async (_req: unknown, res: any) => {
+    try {
+      const services = await mgr.getAllStatus();
+      res.json({ services });
+    } catch (err) {
+      res
+        .status(500)
+        .json({ error: err instanceof Error ? err.message : 'status check failed' });
+    }
+  });
+
+  // POST /api/v1/certs/renew
+  (app as any).post('/api/v1/certs/renew', async (req: any, res: any) => {
+    try {
+      const service: string | undefined =
+        req.body?.service ?? req.json?.service ?? undefined;
+
+      if (service) {
+        // Target a specific service — throws for unknown service
+        const result = await mgr.checkServiceOnce(service);
+        res.json({ results: [result] });
+      } else {
+        // Renew all services
+        const { results } = await mgr.checkAllOnce();
+        res.json({ results });
+      }
+    } catch (err) {
+      res
+        .status(500)
+        .json({ error: err instanceof Error ? err.message : 'renewal failed' });
+    }
+  });
+}
