@@ -1,16 +1,10 @@
 import { createHash } from 'crypto';
-import { DriftReport, CriticalDriftPolicy, ConfigDriftAlert } from './types';
+import { DriftReport, CriticalDriftPolicy, ConfigDriftAlert, DriftSeverity } from './types';
 
 export interface PagerDutyOptions {
   enabled: boolean;
   routingKey: string;
-  /**
-   * Service integration key. In many PD setups, the routing key is enough.
-   */
   integrationKey?: string;
-  /**
-   * Limit alerting to deployment-scoped drift.
-   */
   criticalPolicy: CriticalDriftPolicy;
 }
 
@@ -24,14 +18,17 @@ export class HttpPagerDutyClient implements PagerDutyClient {
   async triggerAlert(alert: ConfigDriftAlert): Promise<void> {
     if (!this.opts.enabled) return;
 
+    // PagerDuty only handles critical; warnings go to Slack.
+    if (alert.severity !== 'critical') return;
+
     const payload = {
       routing_key: this.opts.routingKey,
       event_action: 'trigger',
       dedup_key: alert.alertId,
       payload: {
-        summary: `Config drift detected: ${alert.severity.toUpperCase()}`,
-        source: this.opts.integrationKey ? 'verinode-config-drift' : 'verinode-config-drift',
-        severity: alert.severity,
+        summary: `Config drift detected: ${alert.severity.toUpperCase()} — ${alert.snapshotId}`,
+        source: 'verinode-config-drift',
+        severity: 'critical',
         group: alert.policyMatchedPrefix ? `prefix:${alert.policyMatchedPrefix}` : undefined,
         custom_details: {
           snapshotId: alert.snapshotId,
@@ -44,7 +41,6 @@ export class HttpPagerDutyClient implements PagerDutyClient {
       },
     };
 
-    // Prefer global fetch (Node 18+). If missing, require.
     const fetchFn: typeof fetch = (global as any).fetch;
     if (!fetchFn) {
       throw new Error('Global fetch is not available in this Node runtime');
@@ -74,6 +70,10 @@ export function alertIdFor(report: DriftReport): string {
   return `config-drift:${digest}`;
 }
 
+/**
+ * Build a ConfigDriftAlert for CRITICAL findings.
+ * Returns null when there are no critical findings or policy is disabled.
+ */
 export function buildAlertIfCritical(args: {
   report: DriftReport;
   policy: CriticalDriftPolicy;
@@ -82,13 +82,42 @@ export function buildAlertIfCritical(args: {
   const { report, policy, policyMatchedPrefix } = args;
   if (!policy.enabled) return null;
   if (report.findings.length === 0) return null;
-  if (!policyMatchedPrefix) return null;
+  const hasCritical = report.findings.some((f) => f.severity === 'critical');
+  if (!hasCritical) return null;
 
   return {
     alertId: alertIdFor(report),
     snapshotId: report.snapshotId,
     policyMatchedPrefix,
     severity: 'critical',
+    driftReport: report,
+  };
+}
+
+/**
+ * Build a ConfigDriftAlert for WARNING findings.
+ * Returns null when there are no warning findings or policy is disabled.
+ */
+export function buildAlertIfWarning(args: {
+  report: DriftReport;
+  policy: CriticalDriftPolicy;
+  policyMatchedPrefix?: string;
+}): ConfigDriftAlert | null {
+  const { report, policy, policyMatchedPrefix } = args;
+  if (!policy.enabled) return null;
+  if (report.findings.length === 0) return null;
+  // Only trigger warning alert if there are no critical findings
+  // (critical will be handled by PagerDuty) and there are warnings.
+  const hasCritical = report.findings.some((f) => f.severity === 'critical');
+  if (hasCritical) return null;
+  const hasWarning = report.findings.some((f) => f.severity === 'warning');
+  if (!hasWarning) return null;
+
+  return {
+    alertId: alertIdFor(report),
+    snapshotId: report.snapshotId,
+    policyMatchedPrefix,
+    severity: 'warning',
     driftReport: report,
   };
 }

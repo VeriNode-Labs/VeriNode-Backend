@@ -1,24 +1,73 @@
 import { ConfigDriftAuditor } from './auditor';
 
-// Keep types minimal to avoid coupling to express type packages in this repo.
-// index.js injects an Express app instance at runtime.
+// Express types kept minimal to avoid coupling to @types/express in this module.
+type Req = { query: Record<string, unknown>; params?: Record<string, string> };
+type Res = {
+  json(data: unknown): void;
+  status(code: number): Res;
+  type(mime: string): Res;
+  send(body: string): void;
+};
+
 export function registerConfigDriftRoutes(app: any, auditor: ConfigDriftAuditor): void {
-  app.get('/debug/config-drift', (_req: any, res: any) => {
+
+  // ── GET /config/snapshot ───────────────────────────────────────────────────
+  // Returns the current full runtime config as a snapshot.
+  // Used by external monitoring to verify the runtime state.
+  app.get('/config/snapshot', (_req: Req, res: Res) => {
+    try {
+      const snapshot = auditor.captureSnapshot();
+      res.json(snapshot);
+    } catch (err) {
+      res
+        .status(500)
+        .json({ error: err instanceof Error ? err.message : 'snapshot failed' });
+    }
+  });
+
+  // ── GET /config/drift-events ───────────────────────────────────────────────
+  // Query drift events persisted in PostgreSQL (or empty array when no pool).
+  app.get('/config/drift-events', async (req: Req, res: Res) => {
+    try {
+      const limit = Math.min(Number(req.query.limit ?? 100), 1000);
+      const severity = req.query.severity as string | undefined;
+      const sinceRaw = req.query.since as string | undefined;
+      const since = sinceRaw ? new Date(sinceRaw) : undefined;
+
+      const events = await (auditor as any).options.storage.queryEvents({
+        limit,
+        severity,
+        since,
+      });
+      res.json({ events });
+    } catch (err) {
+      res
+        .status(500)
+        .json({ error: err instanceof Error ? err.message : 'query failed' });
+    }
+  });
+
+  // ── GET /debug/config-drift ────────────────────────────────────────────────
+  app.get('/debug/config-drift', (_req: Req, res: Res) => {
     res.json({
       latest: auditor.latest(),
       history: auditor.history(100),
     });
   });
 
-  app.get('/debug/config-drift/history', (req: any, res: any) => {
+  // ── GET /debug/config-drift/history ───────────────────────────────────────
+  app.get('/debug/config-drift/history', (req: Req, res: Res) => {
     const limit = Math.min(Number(req.query.limit ?? 100), 1000);
     res.json({
       history: auditor.history(limit),
     });
   });
 
-  app.get('/debug/config-drift/ui', (_req: any, res: any) => {
-    res.type('text/html').send(`<!doctype html>
+  // ── GET /debug/config-drift/ui ─────────────────────────────────────────────
+  app.get('/debug/config-drift/ui', (_req: Req, res: Res) => {
+    res
+      .type('text/html')
+      .send(`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -28,29 +77,38 @@ export function registerConfigDriftRoutes(app: any, auditor: ConfigDriftAuditor)
     table { border-collapse: collapse; width: 100%; margin-top: 12px; }
     th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
     th { background: #f4f4f4; }
-    .summary { margin-bottom: 16px; }
+    .critical { color: #c00; font-weight: bold; }
+    .warning  { color: #e60; font-weight: bold; }
+    .info     { color: #090; }
+    .summary  { margin-bottom: 16px; }
   </style>
 </head>
 <body>
   <h1>Config Drift Dashboard</h1>
-  <div class="summary"><em>Displaying latest snapshot and history.</em></div>
-  <div id="content">Loading...</div>
+  <div id="content">Loading…</div>
   <script>
     async function load() {
-      const res = await fetch('/debug/config-drift');
+      const res  = await fetch('/debug/config-drift');
       const data = await res.json();
-      const latest = data.latest;
+      const latest  = data.latest;
       const history = data.history || [];
-      const content = document.getElementById('content');
-      if (!content) return;
+      const el = document.getElementById('content');
+      if (!el) return;
+
       if (!latest) {
-        content.innerHTML = '<p>No drift snapshots available yet.</p>';
+        el.innerHTML = '<p>No drift snapshots yet.</p>';
         return;
       }
+
+      function sev(f) {
+        return '<span class="' + f.severity + '">' + f.severity + '</span>';
+      }
+
       const findingRows = latest.driftReport.findings.map(function(f) {
         return '<tr>' +
           '<td>' + f.category + '</td>' +
           '<td>' + f.key + '</td>' +
+          '<td>' + sev(f) + '</td>' +
           '<td>' + String(f.baselineValue ?? '') + '</td>' +
           '<td>' + String(f.runtimeValue ?? '') + '</td>' +
           '</tr>';
@@ -61,35 +119,35 @@ export function registerConfigDriftRoutes(app: any, auditor: ConfigDriftAuditor)
           '<td>' + item.snapshotId + '</td>' +
           '<td>' + new Date(item.capturedAt).toLocaleString() + '</td>' +
           '<td>' + item.driftReport.summary.total + '</td>' +
-          '<td>' + item.driftReport.summary.valueChanges + '</td>' +
-          '<td>' + item.driftReport.summary.keyAdded + '</td>' +
-          '<td>' + item.driftReport.summary.keyRemoved + '</td>' +
+          '<td>' + item.driftReport.summary.criticalCount + '</td>' +
+          '<td>' + item.driftReport.summary.warningCount + '</td>' +
+          '<td>' + item.driftReport.summary.typeChanges + '</td>' +
           '</tr>';
       }).join('');
 
-      content.innerHTML =
-        '<h2>Latest Snapshot</h2>' +
-        '<p><strong>Snapshot ID:</strong> ' + latest.snapshotId + '</p>' +
-        '<p><strong>Captured:</strong> ' + new Date(latest.capturedAt).toLocaleString() + '</p>' +
-        '<p><strong>Total findings:</strong> ' + latest.driftReport.summary.total + '</p>' +
+      el.innerHTML =
+        '<h2>Latest Snapshot: ' + latest.snapshotId + '</h2>' +
+        '<p>Captured: ' + new Date(latest.capturedAt).toLocaleString() + '</p>' +
+        '<p>Total findings: <strong>' + latest.driftReport.summary.total + '</strong> ' +
+        '(critical: ' + latest.driftReport.summary.criticalCount +
+        ', warning: ' + latest.driftReport.summary.warningCount + ')</p>' +
         '<table>' +
-        '<thead><tr><th>Category</th><th>Key</th><th>Baseline</th><th>Runtime</th></tr></thead>' +
+        '<thead><tr><th>Category</th><th>Key</th><th>Severity</th><th>Baseline</th><th>Runtime</th></tr></thead>' +
         '<tbody>' + findingRows + '</tbody>' +
         '</table>' +
         '<h2>History</h2>' +
         '<table>' +
-        '<thead><tr><th>Snapshot ID</th><th>Captured</th><th>Total</th><th>Value Changes</th><th>Added</th><th>Removed</th></tr></thead>' +
+        '<thead><tr><th>Snapshot ID</th><th>Captured</th><th>Total</th><th>Critical</th><th>Warning</th><th>Type Changes</th></tr></thead>' +
         '<tbody>' + historyRows + '</tbody>' +
         '</table>';
     }
-    load().catch(err => {
-      const content = document.getElementById('content');
-      if (content) content.innerHTML = '<p>Error loading dashboard.</p>';
+    load().catch(function(err) {
+      var el = document.getElementById('content');
+      if (el) el.innerHTML = '<p>Error loading dashboard.</p>';
       console.error(err);
     });
   </script>
 </body>
-</html>
-    `);
+</html>`);
   });
 }
