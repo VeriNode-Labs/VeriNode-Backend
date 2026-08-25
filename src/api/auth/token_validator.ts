@@ -1,4 +1,5 @@
 
+import type { Request, Response, NextFunction } from 'express';
 import type { ActorContext, AuditPermission } from '../../audit/types';
 import { ForbiddenError } from '../../audit/types';
 

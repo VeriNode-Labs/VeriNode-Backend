@@ -127,6 +127,8 @@ async function bootstrap() {
         '/debug/traces/config': 'pro',
         '/health/pools': 'enterprise',
         '/metrics': 'free',
+        '/config/snapshot': 'pro',
+        '/config/drift-events': 'pro',
         '/debug/config-drift': 'pro',
         '/debug/config-drift/history': 'pro',
         '/debug/config-drift/ui': 'pro',
