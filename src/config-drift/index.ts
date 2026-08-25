@@ -4,4 +4,6 @@ export * from './diff';
 export * from './baseline';
 export * from './storage';
 export * from './pagerduty';
+export * from './slack';
 export * from './auditor';
+export * from './remediation';
