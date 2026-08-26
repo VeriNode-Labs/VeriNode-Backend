@@ -1,3 +1,5 @@
+'use strict';
+
 const fs = require('fs');
 const path = require('path');
 
@@ -9,11 +11,15 @@ const requiredSnippets = [
   'cancel-in-progress: true',
   'dorny/paths-filter@v3',
   'Warm dependency cache',
-  'strategy:',
+  'actions/cache@v4',
+  "node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}",
+  'dist-${{ runner.os }}-${{ github.ref }}',
+  'shard-tests.cjs --shard',
   'fail-fast: false',
   'CodeQL analyze',
   'npm audit --omit=dev --audit-level high',
   'docker/build-push-action@v6',
+  'CI timing report',
   'CI complete',
 ];
 
@@ -24,11 +30,34 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
-const shardMatches = [...workflow.matchAll(/^\s*- shard: ([a-z-]+)$/gm)].map((match) => match[1]);
-const uniqueShards = new Set(shardMatches);
-if (uniqueShards.size < 3) {
-  console.error(`Expected at least 3 test shards, found ${uniqueShards.size}.`);
+const shardEnv = workflow.match(/^\s*TEST_SHARDS:\s*(\d+)$/m);
+const shardList = workflow.match(/^\s*shard:\s*\[([^\]]+)\]$/m);
+if (!shardEnv || !shardList) {
+  console.error('CI workflow must declare a TEST_SHARDS env var and a numeric test shard matrix.');
+  process.exit(1);
+}
+const configuredShards = Number(shardEnv[1]);
+const matrixShards = shardList[1]
+  .split(',')
+  .map((entry) => entry.trim())
+  .filter(Boolean)
+  .map(Number);
+if (matrixShards.length !== configuredShards || matrixShards.length < 4) {
+  console.error(
+    `Expected test matrix to list exactly TEST_SHARDS=${configuredShards} shards, ` +
+      `found ${matrixShards.length}.`,
+  );
   process.exit(1);
 }
 
-console.log(`Validated ${uniqueShards.size} CI test shards and required optimization gates.`);
+for (const requiredFile of ['scripts/shard-tests.cjs', 'scripts/test-durations.json']) {
+  if (!fs.existsSync(path.resolve(__dirname, '..', requiredFile))) {
+    console.error(`CI workflow depends on missing file: ${requiredFile}`);
+    process.exit(1);
+  }
+}
+
+console.log(
+  `Validated ${matrixShards.length} parallel test shards, shared dependency cache, ` +
+    'per-branch build cache, and required optimization gates.',
+);

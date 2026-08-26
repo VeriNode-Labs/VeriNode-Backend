@@ -30,7 +30,9 @@ async function main(): Promise<void> {
 
   const tampered = await service.encryptPayload(payload);
   const ct = (tampered.user.ssn as any).ciphertext;
-  (tampered.user.ssn as any).ciphertext = ct.endsWith('A') ? ct.replace(/.$/, 'B') : ct.replace(/.$/, 'A');
+  // Flip the FIRST base64url character: it always carries 6 significant bits,
+  // so the decoded bytes always change and the GCM tag check must fail.
+  (tampered.user.ssn as any).ciphertext = (ct.startsWith('A') ? 'B' : 'A') + ct.slice(1);
   await assert.rejects(() => service.decryptPayload(tampered));
 }
 
