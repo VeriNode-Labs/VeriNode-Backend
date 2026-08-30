@@ -12,6 +12,11 @@ export { ConfigValidationError, ValidationResult, ConfigValidator } from './vali
 export { ConfigEvent, ConfigEventPayload, ConfigEventBus, configEventBus } from './eventbus';
 export { ConfigSource, ConfigLoader } from './loader';
 export { ConfigManager, ConfigChangeCallback, getConfigManager } from './manager';
+export { ConfigMetrics } from './metrics';
+export { ConfigVersion, ConfigVersionHistory } from './versions';
+export { MASKED_VALUE, isSecretKey, maskSecrets, safeConfigForLog } from './secrets';
+export { registerConfigRoutes } from './routes';
+export { EtcdConfigWatcher } from './etcd_watch';
 export { mergeConfigs, normalizeEnvKey, flattenToEnv } from './validator';
 export {
   deepClone,

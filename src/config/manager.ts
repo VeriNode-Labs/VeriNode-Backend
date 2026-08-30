@@ -5,6 +5,8 @@ import { ConfigValidator } from './validator';
 import { deepClone, getIn, setIn, deleteIn } from './utils';
 import { configEventBus } from './eventbus';
 import { mainSchema } from './schema';
+import { ConfigMetrics } from './metrics';
+import { ConfigVersionHistory } from './versions';
 import { createLogger } from '../diagnostics/logger';
 
 const log = createLogger('config_manager');
@@ -36,6 +38,8 @@ export class ConfigManager {
   private reloadDebounceMs = 50; // keep hot-reload propagation below the 100ms P99 target
   private reloadTimer: NodeJS.Timeout | null = null;
   private sighupRegistered = false;
+  private metrics = new ConfigMetrics();
+  private versionHistory = new ConfigVersionHistory();
 
   constructor(schema: any = mainSchema) {
     this.validator = new ConfigValidator(schema);
@@ -177,6 +181,7 @@ export class ConfigManager {
 
     // Load initial configuration
     await this.reload();
+    this.versionHistory.record(this.config, 'initial');
 
     // Dynamically load remote configurations if enabled
     if (options?.loadRemote) {
@@ -276,11 +281,20 @@ export class ConfigManager {
    */
   async reload(): Promise<void> {
     const oldConfig = deepClone(this.config);
+    const startedAt = Date.now();
 
     this.loader.clearCache();
-    const newConfig = await this.loader.load();
+    let newConfig: any;
+    try {
+      newConfig = await this.loader.load();
+    } catch (err) {
+      this.metrics.incrementValidationErrors(1);
+      throw err;
+    }
 
     this.config = newConfig;
+    this.metrics.incrementReload(Date.now() - startedAt);
+    this.versionHistory.record(this.config, 'reload');
 
     configEventBus.emitEvent('updated', this.config);
     configEventBus.emitEvent('loaded', this.config);
@@ -330,10 +344,12 @@ export class ConfigManager {
       const errorMessages = validationResult.errors
         .map((e) => `${e.path}: ${e.message}`)
         .join('; ');
+      this.metrics.incrementValidationErrors(validationResult.errors.length);
       throw new Error(`Configuration validation failed: ${errorMessages}`);
     }
 
     this.config = validationResult.data;
+    this.versionHistory.record(this.config, 'update', `update:${Array.isArray(path) ? path.join('.') : path}`);
     configEventBus.emitEvent('updated', this.config);
 
     // Notify change listeners
@@ -347,6 +363,90 @@ export class ConfigManager {
         });
       }
     }
+  }
+
+  /**
+   * Roll back to a previous configuration version.
+   *
+   * The historical snapshot is re-validated against the *current* schema
+   * before applying, since the schema may have evolved between versions.
+   * A failed rollback leaves the running config untouched.
+   */
+  rollbackTo(version: number): void {
+    const snapshot = this.versionHistory.getVersion(version);
+    if (!snapshot) {
+      throw new Error(`No config version ${version} in history (current: ${this.versionHistory.currentVersion()})`);
+    }
+
+    const validationResult = this.validator.validate(deepClone(snapshot.config));
+    if (!validationResult.valid) {
+      const errorMessages = validationResult.errors
+        .map((e) => `${e.path}: ${e.message}`)
+        .join('; ');
+      this.metrics.incrementValidationErrors(validationResult.errors.length);
+      throw new Error(`Configuration validation failed: ${errorMessages}`);
+    }
+
+    const oldConfig = deepClone(this.config);
+    this.config = validationResult.data;
+    this.metrics.incrementRollbacks();
+    this.versionHistory.record(this.config, 'rollback', `rollback:${version}`);
+    configEventBus.emitEvent('updated', this.config);
+
+    for (const [id, callback] of this.changeCallbacks) {
+      try {
+        callback(oldConfig, this.config);
+      } catch (err) {
+        log.error('Error in configuration change callback', {
+          'callback.id': id,
+          'error.message': (err as Error).message,
+        });
+      }
+    }
+    log.info('Configuration rolled back', { 'config.version': version });
+  }
+
+  /**
+   * Get the version history (for the management API)
+   */
+  getVersionHistory(): ConfigVersionHistory {
+    return this.versionHistory;
+  }
+
+  /**
+   * Current config version number (0 before first load)
+   */
+  currentVersion(): number {
+    return this.versionHistory.currentVersion();
+  }
+
+  /**
+   * Get config metrics (reload count, validation errors, rollbacks)
+   */
+  getMetrics(): ConfigMetrics {
+    return this.metrics;
+  }
+
+  /**
+   * Awaitable reload: resolves once the debounced reload completes.
+   * Rejects if the reload fails (e.g. invalid merged config).
+   */
+  triggerReloadAsync(): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const onComplete = () => {
+        configEventBus.removeListener('reload_complete', onComplete);
+        configEventBus.removeListener('error', onError);
+        resolve();
+      };
+      const onError = (payload: any) => {
+        configEventBus.removeListener('reload_complete', onComplete);
+        configEventBus.removeListener('error', onError);
+        reject(payload.error || new Error('Reload failed'));
+      };
+      configEventBus.on('reload_complete', onComplete);
+      configEventBus.on('error', onError);
+      this.triggerReload();
+    });
   }
 
   /**
@@ -365,10 +465,12 @@ export class ConfigManager {
       const errorMessages = validationResult.errors
         .map((e) => `${e.path}: ${e.message}`)
         .join('; ');
+      this.metrics.incrementValidationErrors(validationResult.errors.length);
       throw new Error(`Configuration validation failed: ${errorMessages}`);
     }
 
     this.config = validationResult.data;
+    this.versionHistory.record(this.config, 'delete', `delete:${Array.isArray(path) ? path.join('.') : path}`);
     configEventBus.emitEvent('updated', this.config);
 
     // Notify change listeners
