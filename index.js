@@ -91,6 +91,44 @@ async function bootstrap() {
     console.warn('[config-drift] Drift modules not loaded');
   }
 
+  // 1c. Start DB index-health monitor + expose read-only endpoint (issue #197).
+  // Advisory only — the analyzer runs READ ONLY and never executes DDL.
+  const indexHealthModule = loadTsModule('database/index_health/index');
+  const dbConfigModule = loadTsModule('config/database');
+  if (indexHealthModule && dbConfigModule && typeof dbConfigModule.createPool === 'function') {
+    try {
+      const { createIndexHealthMonitorFromEnv, registerIndexHealthRoutes, getLatestIndexHealthRun } =
+        indexHealthModule;
+
+      const indexHealthDb = dbConfigModule.createPool();
+      const indexHealthMonitor = createIndexHealthMonitorFromEnv(indexHealthDb);
+      indexHealthMonitor.start();
+
+      registerIndexHealthRoutes(app, {
+        getLatestRun: () =>
+          getLatestIndexHealthRun(indexHealthDb).catch(() => indexHealthMonitor.getLastRun()),
+      });
+      console.log('[index-health] Monitor started');
+
+      const stopIndexHealth = () => {
+        try {
+          indexHealthMonitor.stop();
+        } catch {
+          // noop
+        }
+      };
+      process.once('SIGINT', stopIndexHealth);
+      process.once('SIGTERM', stopIndexHealth);
+    } catch (err) {
+      console.warn(
+        '[index-health] Failed to start monitor:',
+        err && err.message ? err.message : String(err),
+      );
+    }
+  } else {
+    console.warn('[index-health] Modules not loaded');
+  }
+
   // 2. Initialize tracing
 
   const tracing = loadTsModule('diagnostics/tracer');
