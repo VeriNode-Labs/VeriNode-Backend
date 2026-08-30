@@ -91,6 +91,18 @@ async function bootstrap() {
     console.warn('[config-drift] Drift modules not loaded');
   }
 
+  // 1b-2. Config management API (issue #204): GET/PUT /config, reload, rollback.
+  const configRoutesModule = loadTsModule('config/routes');
+  if (configModule && configRoutesModule) {
+    try {
+      const { registerConfigRoutes } = configRoutesModule;
+      registerConfigRoutes(app);
+      console.log('[config] Management API registered (/config, /config/reload, /config/rollback/:version)');
+    } catch (err) {
+      console.warn('[config] Failed to register management API:', (err && err.message) ? err.message : String(err));
+    }
+  }
+
   // 1c. Start DB index-health monitor + expose read-only endpoint (issue #197).
   // Advisory only — the analyzer runs READ ONLY and never executes DDL.
   const indexHealthModule = loadTsModule('database/index_health/index');
