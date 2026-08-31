@@ -66,7 +66,7 @@ jobs:
           cache: npm
       - name: Restore node_modules (shared registry cache)
         id: node-modules-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -90,7 +90,7 @@ jobs:
           cache: npm
       - name: Restore node_modules cache
         id: node-modules-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -99,7 +99,7 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Restore per-branch build output
         id: dist-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: dist
           key: dist-${{ runner.os }}-${{ github.ref }}-${{ hashFiles('src/**', 'tsconfig.json') }}
@@ -110,7 +110,7 @@ jobs:
       - name: Save per-branch build output
         if: steps.dist-cache.outputs.cache-hit != 'true' && success()
         continue-on-error: true
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: dist
           key: dist-${{ runner.os }}-${{ github.ref }}-${{ hashFiles('src/**', 'tsconfig.json') }}
@@ -135,7 +135,7 @@ jobs:
           cache: npm
       - name: Restore node_modules cache
         id: node-modules-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -186,7 +186,7 @@ jobs:
           cache: npm
       - name: Restore node_modules cache
         id: node-modules-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
