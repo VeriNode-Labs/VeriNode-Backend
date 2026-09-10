@@ -44,7 +44,8 @@ export class Simulation {
 
   // simulate a single round; returns true if consensus achieved
   private async runRound(round: number): Promise<boolean> {
-    // Each validator generates a proposal. For simplicity, their proposal is `${id}-v${round}`
+    // Proposals: honest validators vote for canonical block proposal for round
+    const canonicalProposal = `block-r${round}`;
     const proposals: Map<ValidatorId, any> = new Map();
     for (const v of this.validators) {
       // if timeout and in timeout duration, do not propose
@@ -57,7 +58,7 @@ export class Simulation {
       ) {
         continue;
       }
-      proposals.set(v.id, `${v.id}-v${round}`);
+      proposals.set(v.id, canonicalProposal);
     }
 
     // Build message deliveries respecting partition/delay/equivocation
