@@ -1,0 +1,57 @@
+groups:
+  - name: disaster-recovery-alerts
+    rules:
+      - alert: DatabaseBackupStale
+        expr: verinode_backup_age_seconds > 90000
+        for: 15m
+        labels:
+          severity: critical
+          tier: database
+        annotations:
+          summary: Database backup is older than 25 hours (RPO breach imminent)
+          description: "Latest database backup age is {{ $value }}s, exceeding daily schedule window of 86400s."
+          runbook: docs/runbooks/disaster_recovery_runbook.md
+
+      - alert: DatabaseRpoLagBreached
+        expr: verinode_rpo_lag_seconds > 300
+        for: 5m
+        labels:
+          severity: critical
+          tier: database
+        annotations:
+          summary: Database WAL archive delay exceeds 5-minute RPO threshold
+          description: "Current WAL replication lag to S3 archive is {{ $value }}s (>300s RPO limit)."
+          runbook: docs/runbooks/disaster_recovery_runbook.md
+
+      - alert: StagingRestoreTestFailed
+        expr: increase(verinode_restore_test_failure_total[1h]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          tier: database
+        annotations:
+          summary: Weekly staging database restore test or health checks failed
+          description: "Automated staging restore verification failed. Disaster recovery readiness compromised."
+          runbook: docs/runbooks/disaster_recovery_runbook.md
+
+      - alert: DatabaseRtoThresholdBreached
+        expr: verinode_rto_duration_seconds > 3600
+        for: 5m
+        labels:
+          severity: warning
+          tier: database
+        annotations:
+          summary: Staging restore test duration exceeded 1 hour RTO limit
+          description: "Database restore completed in {{ $value }}s, exceeding RTO limit of 3600s."
+          runbook: docs/runbooks/disaster_recovery_runbook.md
+
+      - alert: DatabaseBackupSizeAnomaly
+        expr: verinode_backup_size_bytes < 10485760
+        for: 10m
+        labels:
+          severity: warning
+          tier: database
+        annotations:
+          summary: Database backup size unusually small (<10MB)
+          description: "Backup size is {{ $value }} bytes, suggesting potential truncation or backup corruption."
+          runbook: docs/runbooks/disaster_recovery_runbook.md

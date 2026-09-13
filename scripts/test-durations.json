@@ -7,6 +7,7 @@
   "tests/config/config_drift.test.ts": 596,
   "tests/config/config_management.test.ts": 617,
   "tests/database/backup_verification.test.ts": 564,
+  "tests/database/disaster_recovery.test.ts": 550,
   "tests/database/migration_manager.test.ts": 497,
   "tests/dependency-vulnerability-gate.test.js": 65,
   "tests/diagnostics/logger.test.ts": 531,

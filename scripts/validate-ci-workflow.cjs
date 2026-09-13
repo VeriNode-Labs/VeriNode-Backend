@@ -11,14 +11,14 @@ const requiredSnippets = [
   'cancel-in-progress: true',
   'dorny/paths-filter@v3',
   'Warm dependency cache',
-  'actions/cache@v4',
+  'actions/cache@v6',
   "node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}",
   'dist-${{ runner.os }}-${{ github.ref }}',
   'shard-tests.cjs --shard',
   'fail-fast: false',
   'CodeQL analyze',
   'npm audit --omit=dev --audit-level high',
-  'docker/build-push-action@v6',
+  'docker/build-push-action@v7',
   'CI timing report',
   'CI complete',
 ];
@@ -57,7 +57,7 @@ for (const requiredFile of ['scripts/shard-tests.cjs', 'scripts/test-durations.j
   }
 }
 
-console.log(
+process.stdout.write(
   `Validated ${matrixShards.length} parallel test shards, shared dependency cache, ` +
-    'per-branch build cache, and required optimization gates.',
+    'per-branch build cache, and required optimization gates.\n',
 );
