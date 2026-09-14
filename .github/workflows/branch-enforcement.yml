@@ -1,0 +1,29 @@
+name: Branch Promotion Enforcement
+
+on:
+  pull_request:
+    branches:
+      - staging
+      - main
+
+jobs:
+  enforce-lineage:
+    name: Verify Promotion Origin
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate Source Branch
+        run: |
+          TARGET="${{ github.base_ref }}"
+          SOURCE="${{ github.head_ref }}"
+
+          if [ "$TARGET" = "staging" ] && [ "$SOURCE" != "dev" ]; then
+            echo "ERROR: PRs targeting 'staging' must originate strictly from 'dev'."
+            exit 1
+          fi
+
+          if [ "$TARGET" = "main" ] && [ "$SOURCE" != "staging" ]; then
+            echo "ERROR: PRs targeting 'main' must originate strictly from 'staging'."
+            exit 1
+          fi
+
+          echo "Lineage verified: $SOURCE -> $TARGET"
