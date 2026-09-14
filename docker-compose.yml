@@ -1,0 +1,40 @@
+services:
+  soroban-network:
+    image: stellar/quickstart:testing
+    container_name: verinode-soroban-network
+    command: ["--standalone", "--enable-soroban-rpc"]
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - 'curl -s -f -X POST -H "Content-Type: application/json" -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getHealth\"}" http://localhost:8000/soroban/rpc | grep -q "\"status\":\"healthy\"" || exit 1'
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+
+  backend-indexer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: verinode-backend-indexer
+    restart: unless-stopped
+    depends_on:
+      soroban-network:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+      - NODE_ENV=test
+      - RPC_URL=http://soroban-network:8000/soroban/rpc
+      - LUMINA_CONTRACT_ID=${CONTRACT_ID:-CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM}
+      - DB_PATH=/app/data/indexer.db
+      - POLL_INTERVAL_MS=1000
+    volumes:
+      - sqlite_data:/app/data
+
+volumes:
+  sqlite_data:
+    driver: local
