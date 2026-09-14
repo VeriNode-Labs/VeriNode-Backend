@@ -40,9 +40,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
-          default-branch: main
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ github.ref_name == 'main' }}
             type=sha,format=short,prefix=sha-
             type=ref,event=tag
           labels: |
@@ -74,9 +73,6 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT || 22 }}
           envs: GITHUB_ACTOR,GITHUB_REPOSITORY
-          env:
-            GITHUB_ACTOR: ${{ github.actor }}
-            GITHUB_REPOSITORY: ${{ github.repository }}
           script: |
             set -e
 
@@ -108,3 +104,6 @@ jobs:
             echo "Deployment verification:"
             sleep 3
             docker ps --filter "name=verinode-backend"
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
