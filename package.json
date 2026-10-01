@@ -1,0 +1,23 @@
+{
+  "name": "verinode-data-engine",
+  "version": "0.1.0",
+  "description": "VeriNode Labs state-optimized telemetry ingestion, verification, and proof aggregation engine",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/api/server.js",
+    "dev": "node --watch src/api/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "^17.1.0",
+    "better-sqlite3": "^13.0.3",
+    "dotenv": "^18.0.5",
+    "express": "^5.2.1",
+    "tweetnacl": "^1.0.3",
+    "ws": "^8.21.3"
+  }
+}
